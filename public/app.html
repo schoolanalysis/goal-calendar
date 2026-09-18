@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Goalkeepr</title>
+<link rel="icon" type="image/png" href="/logo.png">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="app-shell">
+
+  <aside class="sidebar">
+    <div class="brand-row">
+      <img class="brand-logo" src="/logo.png" alt="">
+      <span class="brand-wordmark">Goalkeepr</span>
+    </div>
+
+    <div>
+      <div class="sidebar-section-title">Categories</div>
+      <div class="category-list" id="categoryList"></div>
+    </div>
+
+    <div>
+      <div class="today-panel-head">
+        <div class="day-nav">
+          <button class="day-arrow" id="sidebarPrevDay" aria-label="Previous day">&#8249;</button>
+          <button class="day-arrow" id="sidebarNextDay" aria-label="Next day">&#8250;</button>
+        </div>
+        <span class="today-label" id="sidebarDayLabel">Today</span>
+      </div>
+      <button class="today-jump" id="sidebarJumpToday">Jump to today</button>
+
+      <div class="sidebar-goal-list" id="sidebarGoalList"></div>
+
+      <form class="add-goal-form" id="sidebarAddForm">
+        <input class="add-input" id="sidebarAddInput" type="text" placeholder="Add a goal for this day" maxlength="200">
+        <div class="add-goal-row2">
+          <select class="category-select" id="sidebarCategorySelect"></select>
+          <div class="star-picker" id="sidebarStarPicker" data-value="0">
+            <button type="button" data-star="1">&#9733;</button>
+            <button type="button" data-star="2">&#9733;</button>
+            <button type="button" data-star="3">&#9733;</button>
+            <button type="button" data-star="4">&#9733;</button>
+            <button type="button" data-star="5">&#9733;</button>
+          </div>
+        </div>
+        <button class="add-btn" type="submit">Add goal</button>
+      </form>
+    </div>
+  </aside>
+
+  <div class="main-col">
+    <div class="account-row">
+      <span id="accountLabel">Loading account…</span>
+      <button class="gear-btn" id="gearBtn" aria-label="Settings" style="margin-left:auto;">&#9881;</button>
+      <button class="logout-btn" id="logoutBtn">Log out</button>
+    </div>
+
+    <header class="top">
+      <div class="title-block">
+        <h1 class="month-title" id="monthLabel">Month</h1>
+        <span class="year" id="yearLabel">Year</span>
+      </div>
+      <div class="nav-controls">
+        <button class="today-btn" id="todayBtn">Today</button>
+        <button class="nav-btn" id="prevBtn" aria-label="Previous month">&#8249;</button>
+        <button class="nav-btn" id="nextBtn" aria-label="Next month">&#8250;</button>
+      </div>
+    </header>
+
+    <div id="loadingState" class="loading-state">Loading your goals…</div>
+
+    <div class="weekdays" id="weekdaysRow" style="display:none;">
+      <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+    </div>
+    <div class="grid" id="grid"></div>
+
+    <p class="footnote">Your goals are private to your account and saved on the server.</p>
+  </div>
+</div>
+
+<div class="drawer-overlay" id="drawerOverlay"></div>
+<div class="settings-drawer" id="settingsDrawer">
+  <div class="drawer-head">
+    <h2>Settings</h2>
+    <button class="icon-btn" id="closeDrawerBtn" aria-label="Close">&#10005;</button>
+  </div>
+  <div class="drawer-body">
+    <div>
+      <div class="setting-group-title">Theme</div>
+      <div class="option-row" id="themeOptions">
+        <button class="option-btn" data-theme-value="system">System</button>
+        <button class="option-btn" data-theme-value="light">Light</button>
+        <button class="option-btn" data-theme-value="dark">Dark</button>
+      </div>
+    </div>
+    <div>
+      <div class="setting-group-title">Week starts on</div>
+      <div class="option-row" id="weekStartOptions">
+        <button class="option-btn" data-week-value="0">Sunday</button>
+        <button class="option-btn" data-week-value="1">Monday</button>
+      </div>
+    </div>
+    <p class="drawer-footnote">More settings are on the way.</p>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
