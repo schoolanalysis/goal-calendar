@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Goal Calendar</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="account-row">
+    <span id="accountLabel">Loading account…</span>
+    <button class="logout-btn" id="logoutBtn" style="margin-left:auto;">Log out</button>
+  </div>
+
+  <header class="top">
+    <div class="title-block">
+      <h1 class="month-title" id="monthLabel">Month</h1>
+      <span class="year" id="yearLabel">Year</span>
+    </div>
+    <div class="nav-controls">
+      <button class="today-btn" id="todayBtn">Today</button>
+      <button class="nav-btn" id="prevBtn" aria-label="Previous month">&#8249;</button>
+      <button class="nav-btn" id="nextBtn" aria-label="Next month">&#8250;</button>
+    </div>
+  </header>
+
+  <div id="loadingState" class="loading-state">Loading your goals…</div>
+
+  <div class="weekdays" id="weekdaysRow" style="display:none;">
+    <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+  </div>
+  <div class="grid" id="grid"></div>
+
+  <p class="footnote">Your goals are private to your account and saved on the server.</p>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="panel">
+    <div class="panel-head">
+      <h2 id="panelDate">Date</h2>
+      <button class="icon-btn" id="closeBtn" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="goal-list" id="goalList"></div>
+    <div class="add-row">
+      <input class="add-input" id="addInput" type="text" placeholder="Add a goal for this day" maxlength="200">
+      <button class="add-btn" id="addBtn">Add</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>

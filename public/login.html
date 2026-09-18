@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Log in — Goal Calendar</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="auth-card">
+    <h1>Welcome back</h1>
+    <p class="sub">Log in to see your goals.</p>
+    <form id="loginForm">
+      <label for="email">Email</label>
+      <input type="email" id="email" name="email" autocomplete="email" required>
+
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" autocomplete="current-password" required>
+
+      <button class="primary-btn" type="submit" id="submitBtn">Log in</button>
+      <div class="error-msg" id="errorMsg"></div>
+    </form>
+    <p class="auth-alt">New here? <a href="/register.html">Create an account</a></p>
+  </div>
+</div>
+
+<script>
+  const form = document.getElementById('loginForm');
+  const errorMsg = document.getElementById('errorMsg');
+  const submitBtn = document.getElementById('submitBtn');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorMsg.classList.remove('visible');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Logging in…';
+
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: document.getElementById('email').value,
+          password: document.getElementById('password').value
+        })
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        throw new Error(body.error || 'Something went wrong.');
+      }
+      window.location.href = '/app.html';
+    } catch (err) {
+      errorMsg.textContent = err.message;
+      errorMsg.classList.add('visible');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Log in';
+    }
+  });
+</script>
+</body>
+</html>

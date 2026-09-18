@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Create account — Goal Calendar</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="auth-card">
+    <h1>Create your account</h1>
+    <p class="sub">Your goals stay private to you.</p>
+    <form id="registerForm">
+      <label for="name">Name</label>
+      <input type="text" id="name" name="name" autocomplete="name" maxlength="60">
+
+      <label for="email">Email</label>
+      <input type="email" id="email" name="email" autocomplete="email" required>
+
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" autocomplete="new-password" minlength="8" required>
+
+      <button class="primary-btn" type="submit" id="submitBtn">Create account</button>
+      <div class="error-msg" id="errorMsg"></div>
+    </form>
+    <p class="auth-alt">Already have an account? <a href="/login.html">Log in</a></p>
+  </div>
+</div>
+
+<script>
+  const form = document.getElementById('registerForm');
+  const errorMsg = document.getElementById('errorMsg');
+  const submitBtn = document.getElementById('submitBtn');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorMsg.classList.remove('visible');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Creating account…';
+
+    try {
+      const res = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: document.getElementById('name').value,
+          email: document.getElementById('email').value,
+          password: document.getElementById('password').value
+        })
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        throw new Error(body.error || 'Something went wrong.');
+      }
+      window.location.href = '/app.html';
+    } catch (err) {
+      errorMsg.textContent = err.message;
+      errorMsg.classList.add('visible');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Create account';
+    }
+  });
+</script>
+</body>
+</html>
