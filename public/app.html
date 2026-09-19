@@ -17,9 +17,16 @@
       <span class="brand-wordmark">Goalkeepr</span>
     </div>
 
-    <div>
-      <div class="sidebar-section-title">Categories</div>
+    <div class="categories-block">
       <div class="category-list" id="categoryList"></div>
+      <form class="category-add-form" id="categoryAddForm" hidden>
+        <input class="category-add-input" id="categoryAddInput" type="text" placeholder="Category name" maxlength="24">
+        <div class="swatch-row" id="swatchRow"></div>
+        <div class="category-add-actions">
+          <button type="submit" class="mini-btn-primary">Add</button>
+          <button type="button" class="mini-btn-ghost" id="categoryAddCancel">Cancel</button>
+        </div>
+      </form>
     </div>
 
     <div>
@@ -36,15 +43,21 @@
 
       <form class="add-goal-form" id="sidebarAddForm">
         <input class="add-input" id="sidebarAddInput" type="text" placeholder="Add a goal for this day" maxlength="200">
-        <div class="add-goal-row2">
-          <select class="category-select" id="sidebarCategorySelect"></select>
-          <div class="star-picker" id="sidebarStarPicker" data-value="0">
-            <button type="button" data-star="1">&#9733;</button>
-            <button type="button" data-star="2">&#9733;</button>
-            <button type="button" data-star="3">&#9733;</button>
-            <button type="button" data-star="4">&#9733;</button>
-            <button type="button" data-star="5">&#9733;</button>
-          </div>
+        <div class="category-dropdown" id="categoryDropdown">
+          <button type="button" class="cd-trigger" id="cdTrigger" aria-haspopup="listbox" aria-expanded="false">
+            <span class="cd-dot" id="cdDot"></span>
+            <span class="cd-label" id="cdLabel">Category</span>
+            <svg class="cd-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div class="cd-menu" id="cdMenu" role="listbox" hidden></div>
+        </div>
+        <div class="field-label">Significance</div>
+        <div class="star-picker" id="sidebarStarPicker" data-value="0">
+          <button type="button" data-star="1">&#9733;</button>
+          <button type="button" data-star="2">&#9733;</button>
+          <button type="button" data-star="3">&#9733;</button>
+          <button type="button" data-star="4">&#9733;</button>
+          <button type="button" data-star="5">&#9733;</button>
         </div>
         <button class="add-btn" type="submit">Add goal</button>
       </form>
@@ -102,6 +115,15 @@
         <button class="option-btn" data-week-value="0">Sunday</button>
         <button class="option-btn" data-week-value="1">Monday</button>
       </div>
+    </div>
+    <div>
+      <div class="setting-group-title">Sort goals by</div>
+      <div class="option-row" id="sortModeOptions">
+        <button class="option-btn" data-sort-value="significance">Significance</button>
+        <button class="option-btn" data-sort-value="category">Category</button>
+        <button class="option-btn" data-sort-value="manual">Manual</button>
+      </div>
+      <p class="drawer-footnote" style="margin-top:8px;">Manual order can be changed with the up/down arrows on each goal (while viewing "All goals").</p>
     </div>
     <p class="drawer-footnote">More settings are on the way.</p>
   </div>
