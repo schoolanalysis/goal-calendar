@@ -1,15 +1,15 @@
 // Goal Calendar — server
 //
 // A small, self-contained web app: email/password accounts, each user's
-// goals stored privately in a local SQLite database. No third-party
-// auth provider required.
+// goals stored privately in a database. No third-party auth provider
+// required.
 
 const path = require('path');
 const express = require('express');
 const helmet = require('helmet');
 const cookieSession = require('cookie-session');
 const bcrypt = require('bcryptjs');
-const Database = require('better-sqlite3');
+const { createClient } = require('@libsql/client');
 
 const PORT = process.env.PORT || 3000;
 const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-secret-change-me';
@@ -22,38 +22,62 @@ if (SESSION_SECRET === 'dev-secret-change-me') {
 }
 
 // ---------- database ----------
+//
+// Uses Turso (hosted libSQL) when TURSO_DATABASE_URL is set, so data
+// survives redeploys on hosts with an ephemeral filesystem (e.g. Render's
+// free tier). Falls back to a local SQLite file for local development, so
+// nothing extra is required to run this on your own machine.
 
-const db = new Database(path.join(__dirname, 'data.sqlite'));
-db.pragma('journal_mode = WAL');
+const db = createClient(
+  process.env.TURSO_DATABASE_URL
+    ? { url: process.env.TURSO_DATABASE_URL, authToken: process.env.TURSO_AUTH_TOKEN }
+    : { url: 'file:' + path.join(__dirname, 'data.sqlite') }
+);
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    name TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
+if (process.env.TURSO_DATABASE_URL && !process.env.TURSO_AUTH_TOKEN) {
+  console.warn('\n[warning] TURSO_DATABASE_URL is set but TURSO_AUTH_TOKEN is not.\n');
+}
 
-  CREATE TABLE IF NOT EXISTS goals (
-    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-    data TEXT NOT NULL DEFAULT '{}',
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-`);
+async function initDb() {
+  await db.executeMultiple(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      name TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
 
-const stmts = {
-  findUserByEmail: db.prepare('SELECT * FROM users WHERE email = ?'),
-  findUserById: db.prepare('SELECT * FROM users WHERE id = ?'),
-  createUser: db.prepare(
-    'INSERT INTO users (email, password_hash, name) VALUES (?, ?, ?)'
-  ),
-  getGoals: db.prepare('SELECT data FROM goals WHERE user_id = ?'),
-  upsertGoals: db.prepare(`
-    INSERT INTO goals (user_id, data, updated_at)
-    VALUES (?, ?, datetime('now'))
-    ON CONFLICT(user_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at
-  `)
+    CREATE TABLE IF NOT EXISTS goals (
+      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      data TEXT NOT NULL DEFAULT '{}',
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+}
+
+const queries = {
+  findUserByEmail: (email) =>
+    db.execute({ sql: 'SELECT * FROM users WHERE email = ?', args: [email] })
+      .then(r => r.rows[0]),
+  findUserById: (id) =>
+    db.execute({ sql: 'SELECT * FROM users WHERE id = ?', args: [id] })
+      .then(r => r.rows[0]),
+  createUser: (email, passwordHash, name) =>
+    db.execute({
+      sql: 'INSERT INTO users (email, password_hash, name) VALUES (?, ?, ?)',
+      args: [email, passwordHash, name]
+    }).then(r => Number(r.lastInsertRowid)),
+  getGoals: (userId) =>
+    db.execute({ sql: 'SELECT data FROM goals WHERE user_id = ?', args: [userId] })
+      .then(r => r.rows[0]),
+  upsertGoals: (userId, data) =>
+    db.execute({
+      sql: `INSERT INTO goals (user_id, data, updated_at)
+            VALUES (?, ?, datetime('now'))
+            ON CONFLICT(user_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`,
+      args: [userId, data]
+    })
 };
 
 // ---------- app setup ----------
@@ -119,14 +143,14 @@ app.post('/api/register', rateLimit, async (req, res) => {
   const cleanName = (typeof name === 'string' ? name.trim() : '').slice(0, 60) || email.split('@')[0];
   const cleanEmail = email.trim().toLowerCase();
 
-  const existing = stmts.findUserByEmail.get(cleanEmail);
+  const existing = await queries.findUserByEmail(cleanEmail);
   if (existing) {
     return res.status(409).json({ error: 'An account with that email already exists.' });
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
-  const info = stmts.createUser.run(cleanEmail, passwordHash, cleanName);
-  req.session.userId = info.lastInsertRowid;
+  const userId = await queries.createUser(cleanEmail, passwordHash, cleanName);
+  req.session.userId = userId;
 
   res.json({ ok: true, name: cleanName });
 });
@@ -136,7 +160,7 @@ app.post('/api/login', rateLimit, async (req, res) => {
   if (!isValidEmail(email) || typeof password !== 'string') {
     return res.status(400).json({ error: 'Enter your email and password.' });
   }
-  const user = stmts.findUserByEmail.get(email.trim().toLowerCase());
+  const user = await queries.findUserByEmail(email.trim().toLowerCase());
   if (!user) {
     return res.status(401).json({ error: 'Incorrect email or password.' });
   }
@@ -153,11 +177,11 @@ app.post('/api/logout', (req, res) => {
   res.json({ ok: true });
 });
 
-app.get('/api/me', (req, res) => {
+app.get('/api/me', async (req, res) => {
   if (!req.session || !req.session.userId) {
     return res.json({ signedIn: false });
   }
-  const user = stmts.findUserById.get(req.session.userId);
+  const user = await queries.findUserById(req.session.userId);
   if (!user) {
     req.session = null;
     return res.json({ signedIn: false });
@@ -167,8 +191,8 @@ app.get('/api/me', (req, res) => {
 
 // ---------- goals API ----------
 
-app.get('/api/goals', requireAuth, (req, res) => {
-  const row = stmts.getGoals.get(req.session.userId);
+app.get('/api/goals', requireAuth, async (req, res) => {
+  const row = await queries.getGoals(req.session.userId);
   let goals = {};
   if (row) {
     try {
@@ -180,7 +204,7 @@ app.get('/api/goals', requireAuth, (req, res) => {
   res.json({ goals });
 });
 
-app.put('/api/goals', requireAuth, (req, res) => {
+app.put('/api/goals', requireAuth, async (req, res) => {
   const { goals } = req.body || {};
   if (typeof goals !== 'object' || goals === null || Array.isArray(goals)) {
     return res.status(400).json({ error: 'Malformed goals payload.' });
@@ -189,7 +213,7 @@ app.put('/api/goals', requireAuth, (req, res) => {
   if (serialized.length > 2_000_000) {
     return res.status(413).json({ error: 'That is too much data to save at once.' });
   }
-  stmts.upsertGoals.run(req.session.userId, serialized);
+  await queries.upsertGoals(req.session.userId, serialized);
   res.json({ ok: true });
 });
 
@@ -212,6 +236,13 @@ app.get('/app.html', (req, res) => {
 
 app.use(express.static(PUBLIC_DIR));
 
-app.listen(PORT, () => {
-  console.log(`Goal Calendar running at http://localhost:${PORT}`);
-});
+initDb()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`Goal Calendar running at http://localhost:${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error('Failed to initialize database:', err);
+    process.exit(1);
+  });
