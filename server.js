@@ -198,9 +198,8 @@ app.put('/api/goals', requireAuth, (req, res) => {
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
 app.get('/', (req, res) => {
-  if (req.session && req.session.userId) {
-    return res.redirect('/app.html');
-  }
+  // Always show the landing page on "/", even for signed-in users, instead
+  // of redirecting straight into the app.
   res.sendFile(path.join(PUBLIC_DIR, 'landing.html'));
 });
 

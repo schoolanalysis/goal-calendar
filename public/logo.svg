@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <defs>
+    <linearGradient id="gk-tile" x1="0" y1="0" x2="200" y2="200" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4C7CFF"/>
+      <stop offset="1" stop-color="#1B45D6"/>
+    </linearGradient>
+  </defs>
+  <rect x="3" y="3" width="194" height="194" rx="46" fill="url(#gk-tile)"/>
+  <path d="M62 52 V152 M62 52 H146 M146 52 V110" stroke="#FFFFFF" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M96 120 Q110 108 127 113" stroke="#3FE3AE" stroke-width="7" stroke-linecap="round" opacity="0.6"/>
+  <circle cx="139" cy="129" r="18" fill="#3FE3AE"/>
+  <circle cx="139" cy="129" r="18" stroke="#0F9D6E" stroke-width="2" opacity="0.35"/>
+</svg>

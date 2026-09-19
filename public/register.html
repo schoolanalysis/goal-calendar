@@ -3,34 +3,98 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Create account — Goal Calendar</title>
-<link rel="icon" type="image/png" href="/logo.png">
+<title>Create account — Goalkeepr</title>
+<link rel="icon" type="image/svg+xml" href="/logo.svg">
+<link rel="alternate icon" type="image/png" href="/logo.png">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-<div class="auth-wrap">
-  <div class="brand-row">
-    <img class="brand-logo" src="/logo.png" alt="">
-    <span class="brand-wordmark">Goalkeepr</span>
+<div class="split-auth">
+
+  <div class="split-form">
+    <div class="split-form-inner">
+      <a class="brand-row split-brand" href="/">
+        <img class="brand-logo" src="/logo.svg" alt="">
+        <span class="brand-wordmark">Goalkeepr</span>
+      </a>
+      <div class="auth-card">
+        <h1>Create your account</h1>
+        <p class="sub">Your goals stay private to you.</p>
+        <form id="registerForm">
+          <label for="name">Name</label>
+          <input type="text" id="name" name="name" autocomplete="name" maxlength="60">
+
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" autocomplete="email" required>
+
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" autocomplete="new-password" minlength="8" required>
+
+          <button class="primary-btn" type="submit" id="submitBtn">Create account</button>
+          <div class="error-msg" id="errorMsg"></div>
+        </form>
+        <p class="auth-alt">Already have an account? <a href="/login.html">Log in</a></p>
+      </div>
+    </div>
   </div>
-  <div class="auth-card">
-    <h1>Create your account</h1>
-    <p class="sub">Your goals stay private to you.</p>
-    <form id="registerForm">
-      <label for="name">Name</label>
-      <input type="text" id="name" name="name" autocomplete="name" maxlength="60">
 
-      <label for="email">Email</label>
-      <input type="email" id="email" name="email" autocomplete="email" required>
+  <div class="split-preview" aria-hidden="true">
+    <span class="blob blob-1"></span>
+    <span class="blob blob-2"></span>
+    <span class="blob blob-3"></span>
 
-      <label for="password">Password</label>
-      <input type="password" id="password" name="password" autocomplete="new-password" minlength="8" required>
+    <div class="preview-window">
+      <div class="preview-chrome"><span></span><span></span><span></span></div>
+      <div class="preview-body">
+        <div class="preview-sidebar">
+          <div class="preview-brand"></div>
+          <div class="preview-cat" style="--c:#3C64F4"></div>
+          <div class="preview-cat" style="--c:#17B27C"></div>
+          <div class="preview-cat" style="--c:#E7A62B"></div>
+          <div class="preview-cat" style="--c:#B45BD6"></div>
+        </div>
+        <div class="preview-main">
+          <div class="preview-toprow"><span class="pm-title"></span><span class="pm-pill"></span></div>
+          <div class="preview-grid">
+            <div class="pg-cell"></div>
+            <div class="pg-cell has-goal"><i style="--c:#17B27C"></i></div>
+            <div class="pg-cell"></div>
+            <div class="pg-cell has-goal"><i style="--c:#3C64F4"></i></div>
+            <div class="pg-cell"></div>
+            <div class="pg-cell"></div>
+            <div class="pg-cell has-goal"><i style="--c:#E7A62B"></i></div>
 
-      <button class="primary-btn" type="submit" id="submitBtn">Create account</button>
-      <div class="error-msg" id="errorMsg"></div>
-    </form>
-    <p class="auth-alt">Already have an account? <a href="/login.html">Log in</a></p>
+            <div class="pg-cell"></div>
+            <div class="pg-cell"></div>
+            <div class="pg-cell has-goal"><i style="--c:#3C64F4"></i><i style="--c:#17B27C"></i></div>
+            <div class="pg-cell"></div>
+            <div class="pg-cell"></div>
+            <div class="pg-cell"></div>
+            <div class="pg-cell has-goal"><i style="--c:#B45BD6"></i></div>
+
+            <div class="pg-cell"></div>
+            <div class="pg-cell is-today"></div>
+            <div class="pg-cell"></div>
+            <div class="pg-cell has-goal"><i style="--c:#3C64F4"></i></div>
+            <div class="pg-cell"></div>
+            <div class="pg-cell has-goal"><i style="--c:#17B27C"></i></div>
+            <div class="pg-cell"></div>
+
+            <div class="pg-cell has-goal"><i style="--c:#E7A62B"></i></div>
+            <div class="pg-cell"></div>
+            <div class="pg-cell"></div>
+            <div class="pg-cell"></div>
+            <div class="pg-cell has-goal"><i style="--c:#3C64F4"></i></div>
+            <div class="pg-cell"></div>
+            <div class="pg-cell"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p class="preview-caption">Set it up in a minute. Your first goal is one click away.</p>
   </div>
+
 </div>
 
 <script>
