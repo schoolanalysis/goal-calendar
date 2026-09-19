@@ -5,16 +5,24 @@
     { id: 'extracurricular', name: 'Extracurricular', color: '#8B3FF2' },
     { id: 'personal', name: 'Personal', color: '#FF7A17' }
   ];
-  const FALLBACK_CATEGORY = { id: '_none', name: 'Uncategorized', color: '#8A93A6' };
   const SWATCHES = ['#3355FF', '#0FBB63', '#8B3FF2', '#FF7A17', '#F23F7A', '#08B5D6', '#E5342E', '#D6B60A'];
 
   let customCategories = [];
 
   function allCategories() { return CATEGORIES.concat(customCategories); }
-  function findCategory(id) { return allCategories().find(c => c.id === id) || FALLBACK_CATEGORY; }
+  // Returns null when the id doesn't resolve to a real category (e.g. the
+  // category was later removed) — callers decide whether to show nothing.
+  function findCategory(id) { return allCategories().find(c => c.id === id) || null; }
 
   const SETTINGS_KEY = 'goalkeepr-settings';
-  let settings = { theme: 'system', weekStart: 0, sortMode: 'significance' };
+  let settings = {
+    theme: 'system',
+    weekStart: 0,
+    sortMode: 'significance',
+    showCategories: true,
+    showSignificance: true,
+    sidebarCollapsed: false
+  };
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (raw) settings = Object.assign(settings, JSON.parse(raw));
@@ -166,18 +174,34 @@
   const swatchRow = document.getElementById('swatchRow');
   let swatchPick = SWATCHES[0];
 
+  const customColorInput = document.getElementById('customColorInput');
+  const rainbowSwatchBtn = document.getElementById('rainbowSwatchBtn');
+  let customColorPicked = false;
+
   function renderSwatchRow() {
     swatchRow.innerHTML = '';
     SWATCHES.forEach(color => {
       const b = document.createElement('button');
       b.type = 'button';
-      b.className = 'swatch-btn' + (color === swatchPick ? ' selected' : '');
+      b.className = 'swatch-btn' + (!customColorPicked && color === swatchPick ? ' selected' : '');
       b.style.background = color;
       b.setAttribute('aria-label', 'Choose color ' + color);
-      b.addEventListener('click', () => { swatchPick = color; renderSwatchRow(); });
+      b.addEventListener('click', () => {
+        customColorPicked = false;
+        swatchPick = color;
+        renderSwatchRow();
+      });
       swatchRow.appendChild(b);
     });
+    rainbowSwatchBtn.classList.toggle('selected', customColorPicked);
+    rainbowSwatchBtn.style.setProperty('--picked', customColorPicked ? swatchPick : 'transparent');
   }
+
+  customColorInput.addEventListener('input', () => {
+    customColorPicked = true;
+    swatchPick = customColorInput.value;
+    renderSwatchRow();
+  });
 
   categoryAddForm.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -187,6 +211,7 @@
     customCategories.push({ id, name, color: swatchPick });
     scheduleSave();
     categoryAddInput.value = '';
+    customColorPicked = false;
     swatchPick = SWATCHES[customCategories.length % SWATCHES.length];
     renderSwatchRow();
     categoryAddForm.hidden = true;
@@ -206,8 +231,8 @@
   const cdLabel = document.getElementById('cdLabel');
 
   function setSelectedCategory(id) {
-    selectedCategoryId = id;
-    const cat = findCategory(id);
+    const cat = findCategory(id) || allCategories()[0];
+    selectedCategoryId = cat.id;
     cdDot.style.background = cat.color;
     cdLabel.textContent = cat.name;
   }
@@ -255,12 +280,24 @@
       starPickerValue = (starPickerValue === val) ? 0 : val;
       renderStarPicker();
     });
+    btn.addEventListener('mouseenter', () => previewStarPicker(Number(btn.dataset.star)));
   });
+  sidebarStarPicker.addEventListener('mouseleave', renderStarPicker);
 
   function renderStarPicker() {
     sidebarStarPicker.querySelectorAll('button').forEach(btn => {
       const val = Number(btn.dataset.star);
+      btn.classList.remove('preview');
       btn.classList.toggle('filled', val <= starPickerValue);
+    });
+  }
+
+  // Ghost-fills stars up to the hovered one, without committing the value.
+  function previewStarPicker(hoverVal) {
+    sidebarStarPicker.querySelectorAll('button').forEach(btn => {
+      const val = Number(btn.dataset.star);
+      btn.classList.remove('filled');
+      btn.classList.toggle('preview', val <= hoverVal);
     });
   }
 
@@ -356,19 +393,23 @@
 
       const meta = document.createElement('div');
       meta.className = 'sidebar-goal-meta';
-      const cat = findCategory(g.category);
-      const tag = document.createElement('span');
-      tag.className = 'mini-category-tag';
-      tag.style.background = cat.color;
-      tag.textContent = cat.name;
-      meta.appendChild(tag);
-      if (g.stars) {
+      if (settings.showCategories) {
+        const cat = findCategory(g.category);
+        if (cat) {
+          const tag = document.createElement('span');
+          tag.className = 'mini-category-tag';
+          tag.style.background = cat.color;
+          tag.textContent = cat.name;
+          meta.appendChild(tag);
+        }
+      }
+      if (settings.showSignificance && g.stars) {
         const stars = document.createElement('span');
         stars.className = 'mini-stars';
         stars.innerHTML = starsHtml(g.stars);
         meta.appendChild(stars);
       }
-      main.appendChild(meta);
+      if (meta.childNodes.length) main.appendChild(meta);
 
       row.appendChild(toggle);
       row.appendChild(main);
@@ -580,7 +621,35 @@
     document.querySelectorAll('#sortModeOptions .option-btn').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.sortValue === settings.sortMode);
     });
+    document.querySelectorAll('#showCategoriesOptions .option-btn').forEach(btn => {
+      btn.classList.toggle('active', (btn.dataset.boolValue === 'true') === settings.showCategories);
+    });
+    document.querySelectorAll('#showSignificanceOptions .option-btn').forEach(btn => {
+      btn.classList.toggle('active', (btn.dataset.boolValue === 'true') === settings.showSignificance);
+    });
   }
+
+  function applyVisibilitySettings() {
+    document.getElementById('categoriesBlock').style.display = settings.showCategories ? '' : 'none';
+    document.getElementById('categoryDropdown').style.display = settings.showCategories ? '' : 'none';
+    document.getElementById('significanceGroup').style.display = settings.showSignificance ? '' : 'none';
+    if (!settings.showCategories && categoryFilter !== null) {
+      categoryFilter = null;
+    }
+  }
+
+  function applySidebarCollapsed() {
+    document.getElementById('sidebar').classList.toggle('is-collapsed', settings.sidebarCollapsed);
+    const btn = document.getElementById('sidebarCollapseBtn');
+    btn.setAttribute('aria-label', settings.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar');
+    btn.title = settings.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar';
+  }
+
+  document.getElementById('sidebarCollapseBtn').addEventListener('click', () => {
+    settings.sidebarCollapsed = !settings.sidebarCollapsed;
+    saveSettings();
+    applySidebarCollapsed();
+  });
 
   document.querySelectorAll('#themeOptions .option-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -605,6 +674,25 @@
       renderSettingUI();
       renderSidebarGoals();
       renderCalendar();
+    });
+  });
+  document.querySelectorAll('#showCategoriesOptions .option-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      settings.showCategories = btn.dataset.boolValue === 'true';
+      saveSettings();
+      renderSettingUI();
+      applyVisibilitySettings();
+      renderCategoryList();
+      renderSidebarGoals();
+    });
+  });
+  document.querySelectorAll('#showSignificanceOptions .option-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      settings.showSignificance = btn.dataset.boolValue === 'true';
+      saveSettings();
+      renderSettingUI();
+      applyVisibilitySettings();
+      renderSidebarGoals();
     });
   });
 
@@ -636,6 +724,8 @@
     swatchPick = SWATCHES[customCategories.length % SWATCHES.length];
     renderSwatchRow();
     renderSettingUI();
+    applyVisibilitySettings();
+    applySidebarCollapsed();
     renderCategoryList();
     renderCategoryDropdown();
     renderStarPicker();
