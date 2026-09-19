@@ -1,19 +1,20 @@
 (function () {
   const CATEGORIES = [
-    { id: 'work', name: 'Work', color: '#5B7A6B' },
-    { id: 'personal', name: 'Personal', color: '#B5652C' },
-    { id: 'academic', name: 'Academic', color: '#4C6FA6' },
-    { id: 'athletic', name: 'Athletic', color: '#3F8F5E' },
-    { id: 'extracurricular', name: 'Extracurricular', color: '#8A5BA6' },
-    { id: 'club', name: 'Club', color: '#A65B7A' },
-    { id: 'musical', name: 'Musical', color: '#A69B3F' },
-    { id: 'performance', name: 'Performance', color: '#3F9BA6' },
-    { id: 'other', name: 'Other', color: '#7A7A72' }
+    { id: 'academic', name: 'Academic', color: '#3355FF' },
+    { id: 'athletic', name: 'Athletic', color: '#0FBB63' },
+    { id: 'extracurricular', name: 'Extracurricular', color: '#8B3FF2' },
+    { id: 'personal', name: 'Personal', color: '#FF7A17' }
   ];
-  const categoryById = Object.fromEntries(CATEGORIES.map(c => [c.id, c]));
+  const FALLBACK_CATEGORY = { id: '_none', name: 'Uncategorized', color: '#8A93A6' };
+  const SWATCHES = ['#3355FF', '#0FBB63', '#8B3FF2', '#FF7A17', '#F23F7A', '#08B5D6', '#E5342E', '#D6B60A'];
+
+  let customCategories = [];
+
+  function allCategories() { return CATEGORIES.concat(customCategories); }
+  function findCategory(id) { return allCategories().find(c => c.id === id) || FALLBACK_CATEGORY; }
 
   const SETTINGS_KEY = 'goalkeepr-settings';
-  let settings = { theme: 'system', weekStart: 0 };
+  let settings = { theme: 'system', weekStart: 0, sortMode: 'significance' };
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (raw) settings = Object.assign(settings, JSON.parse(raw));
@@ -36,6 +37,7 @@
   let saveTimer = null;
   let categoryFilter = null; // null = show all
   let starPickerValue = 0;
+  let selectedCategoryId = null;
 
   function pad2(n) { return String(n).padStart(2, '0'); }
   function keyFor(y, m, d) { return y + '-' + pad2(m + 1) + '-' + pad2(d); }
@@ -48,6 +50,7 @@
     clearTimeout(saveTimer);
     saveTimer = setTimeout(async () => {
       try {
+        data.__categories = customCategories;
         const res = await fetch('/api/goals', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -77,42 +80,173 @@
   const categoryListEl = document.getElementById('categoryList');
   const sidebarDayLabel = document.getElementById('sidebarDayLabel');
   const sidebarGoalList = document.getElementById('sidebarGoalList');
-  const sidebarCategorySelect = document.getElementById('sidebarCategorySelect');
   const sidebarStarPicker = document.getElementById('sidebarStarPicker');
   const sidebarAddInput = document.getElementById('sidebarAddInput');
 
-  // ---------- category sidebar list ----------
+  // ---------- category sidebar list (compact chips) ----------
+  function setChipColors(el, color, active) {
+    if (active) {
+      el.style.background = color;
+      el.style.borderColor = color;
+      el.style.color = '#fff';
+    } else {
+      el.style.background = '';
+      el.style.borderColor = '';
+      el.style.color = '';
+    }
+  }
+
   function renderCategoryList() {
     categoryListEl.innerHTML = '';
 
-    const allBtn = document.createElement('button');
-    allBtn.type = 'button';
-    allBtn.className = 'category-chip' + (categoryFilter === null ? ' active' : '');
-    allBtn.innerHTML = '<span class="category-dot" style="background:var(--ink-soft)"></span><span>All goals</span>';
-    allBtn.addEventListener('click', () => { categoryFilter = null; renderCategoryList(); renderSidebarGoals(); renderCalendar(); });
-    categoryListEl.appendChild(allBtn);
+    const allChip = document.createElement('button');
+    allChip.type = 'button';
+    allChip.className = 'category-chip' + (categoryFilter === null ? ' active' : '');
+    allChip.innerHTML = '<span class="category-dot" style="background:currentColor"></span><span>All</span>';
+    setChipColors(allChip, 'var(--primary)', categoryFilter === null);
+    if (categoryFilter === null) { allChip.style.background = 'var(--primary)'; allChip.style.borderColor = 'var(--primary)'; }
+    allChip.addEventListener('click', () => { categoryFilter = null; renderCategoryList(); renderSidebarGoals(); renderCalendar(); });
+    categoryListEl.appendChild(allChip);
 
-    CATEGORIES.forEach(cat => {
+    allCategories().forEach(cat => {
+      const wrap = document.createElement('span');
+      wrap.className = 'category-chip' + (categoryFilter === cat.id ? ' active' : '');
+      setChipColors(wrap, cat.color, categoryFilter === cat.id);
+
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'category-chip' + (categoryFilter === cat.id ? ' active' : '');
-      btn.innerHTML = '<span class="category-dot" style="background:' + cat.color + '"></span><span>' + cat.name + '</span>';
+      btn.className = 'chip-select';
+      btn.innerHTML = '<span class="category-dot" style="background:' + (categoryFilter === cat.id ? '#fff' : cat.color) + '"></span><span>' + cat.name + '</span>';
       btn.addEventListener('click', () => {
         categoryFilter = (categoryFilter === cat.id) ? null : cat.id;
         renderCategoryList();
         renderSidebarGoals();
         renderCalendar();
       });
-      categoryListEl.appendChild(btn);
+      wrap.appendChild(btn);
+
+      const isCustom = customCategories.some(c => c.id === cat.id);
+      if (isCustom) {
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'chip-remove';
+        remove.setAttribute('aria-label', 'Remove ' + cat.name + ' category');
+        remove.innerHTML = '&#10005;';
+        remove.addEventListener('click', (e) => {
+          e.stopPropagation();
+          customCategories = customCategories.filter(c => c.id !== cat.id);
+          if (categoryFilter === cat.id) categoryFilter = null;
+          scheduleSave();
+          renderCategoryList();
+          renderSidebarGoals();
+          renderCalendar();
+          renderCategoryDropdown();
+        });
+        wrap.appendChild(remove);
+      }
+
+      categoryListEl.appendChild(wrap);
+    });
+
+    const addChip = document.createElement('button');
+    addChip.type = 'button';
+    addChip.className = 'category-chip category-add-chip';
+    addChip.textContent = '+ Add';
+    addChip.addEventListener('click', () => {
+      const form = document.getElementById('categoryAddForm');
+      form.hidden = !form.hidden;
+      if (!form.hidden) document.getElementById('categoryAddInput').focus();
+    });
+    categoryListEl.appendChild(addChip);
+  }
+
+  // ---------- custom category creation ----------
+  const categoryAddForm = document.getElementById('categoryAddForm');
+  const categoryAddInput = document.getElementById('categoryAddInput');
+  const swatchRow = document.getElementById('swatchRow');
+  let swatchPick = SWATCHES[0];
+
+  function renderSwatchRow() {
+    swatchRow.innerHTML = '';
+    SWATCHES.forEach(color => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'swatch-btn' + (color === swatchPick ? ' selected' : '');
+      b.style.background = color;
+      b.setAttribute('aria-label', 'Choose color ' + color);
+      b.addEventListener('click', () => { swatchPick = color; renderSwatchRow(); });
+      swatchRow.appendChild(b);
     });
   }
 
-  // populate the add-goal category dropdown once
-  CATEGORIES.forEach(cat => {
-    const opt = document.createElement('option');
-    opt.value = cat.id;
-    opt.textContent = cat.name;
-    sidebarCategorySelect.appendChild(opt);
+  categoryAddForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const name = categoryAddInput.value.trim();
+    if (!name) return;
+    const id = 'custom_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    customCategories.push({ id, name, color: swatchPick });
+    scheduleSave();
+    categoryAddInput.value = '';
+    swatchPick = SWATCHES[customCategories.length % SWATCHES.length];
+    renderSwatchRow();
+    categoryAddForm.hidden = true;
+    renderCategoryList();
+    renderCategoryDropdown();
+  });
+
+  document.getElementById('categoryAddCancel').addEventListener('click', () => {
+    categoryAddForm.hidden = true;
+    categoryAddInput.value = '';
+  });
+
+  // ---------- custom category dropdown (add-goal form) ----------
+  const cdTrigger = document.getElementById('cdTrigger');
+  const cdMenu = document.getElementById('cdMenu');
+  const cdDot = document.getElementById('cdDot');
+  const cdLabel = document.getElementById('cdLabel');
+
+  function setSelectedCategory(id) {
+    selectedCategoryId = id;
+    const cat = findCategory(id);
+    cdDot.style.background = cat.color;
+    cdLabel.textContent = cat.name;
+  }
+
+  function renderCategoryDropdown() {
+    cdMenu.innerHTML = '';
+    allCategories().forEach(cat => {
+      const opt = document.createElement('button');
+      opt.type = 'button';
+      opt.className = 'cd-option';
+      opt.setAttribute('role', 'option');
+      opt.innerHTML = '<span class="category-dot" style="background:' + cat.color + '"></span><span>' + cat.name + '</span>';
+      opt.addEventListener('click', () => {
+        setSelectedCategory(cat.id);
+        closeCategoryDropdown();
+      });
+      cdMenu.appendChild(opt);
+    });
+    if (!selectedCategoryId || !allCategories().some(c => c.id === selectedCategoryId)) {
+      setSelectedCategory(allCategories()[0].id);
+    }
+  }
+
+  function openCategoryDropdown() {
+    cdMenu.hidden = false;
+    cdTrigger.setAttribute('aria-expanded', 'true');
+  }
+  function closeCategoryDropdown() {
+    cdMenu.hidden = true;
+    cdTrigger.setAttribute('aria-expanded', 'false');
+  }
+  cdTrigger.addEventListener('click', () => {
+    if (cdMenu.hidden) openCategoryDropdown(); else closeCategoryDropdown();
+  });
+  document.addEventListener('click', (e) => {
+    if (!document.getElementById('categoryDropdown').contains(e.target)) closeCategoryDropdown();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeCategoryDropdown();
   });
 
   sidebarStarPicker.querySelectorAll('button').forEach(btn => {
@@ -143,6 +277,35 @@
     return list;
   }
 
+  // ---------- sorting & manual reordering ----------
+  function categoryRank(id) {
+    const idx = allCategories().findIndex(c => c.id === id);
+    return idx === -1 ? allCategories().length : idx;
+  }
+
+  function sortGoals(list) {
+    const withIndex = list.map((g, i) => ({ g, i }));
+    if (settings.sortMode === 'significance') {
+      withIndex.sort((a, b) => (b.g.stars || 0) - (a.g.stars || 0) || a.i - b.i);
+    } else if (settings.sortMode === 'category') {
+      withIndex.sort((a, b) => categoryRank(a.g.category) - categoryRank(b.g.category) || a.i - b.i);
+    }
+    // 'manual' keeps the underlying array order as-is
+    return withIndex.map(x => x.g);
+  }
+
+  function moveGoal(fullList, goal, direction) {
+    const idx = fullList.indexOf(goal);
+    const swapIdx = idx + direction;
+    if (idx === -1 || swapIdx < 0 || swapIdx >= fullList.length) return;
+    const tmp = fullList[idx];
+    fullList[idx] = fullList[swapIdx];
+    fullList[swapIdx] = tmp;
+    scheduleSave();
+    renderSidebarGoals();
+    renderCalendar();
+  }
+
   // ---------- sidebar today/day panel ----------
   function renderSidebarHead() {
     const isToday = sameDay(selectedDay, today);
@@ -156,7 +319,9 @@
     sidebarGoalList.innerHTML = '';
     const k = keyForDate(selectedDay);
     const fullList = data[k] || [];
-    const list = categoryFilter ? fullList.filter(g => g.category === categoryFilter) : fullList;
+    const filteredList = categoryFilter ? fullList.filter(g => g.category === categoryFilter) : fullList;
+    const list = sortGoals(filteredList);
+    const canReorder = settings.sortMode === 'manual' && !categoryFilter;
 
     if (!list.length) {
       const empty = document.createElement('div');
@@ -166,7 +331,7 @@
       return;
     }
 
-    list.forEach(g => {
+    list.forEach((g, displayIdx) => {
       const row = document.createElement('div');
       row.className = 'sidebar-goal-row';
 
@@ -191,7 +356,7 @@
 
       const meta = document.createElement('div');
       meta.className = 'sidebar-goal-meta';
-      const cat = categoryById[g.category] || categoryById.other;
+      const cat = findCategory(g.category);
       const tag = document.createElement('span');
       tag.className = 'mini-category-tag';
       tag.style.background = cat.color;
@@ -205,6 +370,34 @@
       }
       main.appendChild(meta);
 
+      row.appendChild(toggle);
+      row.appendChild(main);
+
+      if (canReorder) {
+        const reorderWrap = document.createElement('div');
+        reorderWrap.className = 'goal-reorder';
+
+        const up = document.createElement('button');
+        up.type = 'button';
+        up.className = 'reorder-btn';
+        up.innerHTML = '&#9650;';
+        up.setAttribute('aria-label', 'Move up');
+        up.disabled = displayIdx === 0;
+        up.addEventListener('click', () => moveGoal(fullList, g, -1));
+
+        const down = document.createElement('button');
+        down.type = 'button';
+        down.className = 'reorder-btn';
+        down.innerHTML = '&#9660;';
+        down.setAttribute('aria-label', 'Move down');
+        down.disabled = displayIdx === list.length - 1;
+        down.addEventListener('click', () => moveGoal(fullList, g, 1));
+
+        reorderWrap.appendChild(up);
+        reorderWrap.appendChild(down);
+        row.appendChild(reorderWrap);
+      }
+
       const remove = document.createElement('button');
       remove.className = 'goal-remove';
       remove.type = 'button';
@@ -216,10 +409,8 @@
         renderSidebarGoals();
         renderCalendar();
       });
-
-      row.appendChild(toggle);
-      row.appendChild(main);
       row.appendChild(remove);
+
       sidebarGoalList.appendChild(row);
     });
   }
@@ -233,7 +424,7 @@
       id: 'g_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
       text: text,
       done: false,
-      category: sidebarCategorySelect.value || 'other',
+      category: selectedCategoryId || allCategories()[0].id,
       stars: starPickerValue
     });
     scheduleSave();
@@ -322,7 +513,7 @@
       if (goals.length) {
         const preview = document.createElement('div');
         preview.className = 'goal-preview';
-        goals.slice(0, 2).forEach(g => {
+        sortGoals(goals).slice(0, 2).forEach(g => {
           const span = document.createElement('span');
           span.className = 'pv-item' + (g.done ? ' done' : '');
           span.textContent = g.text;
@@ -386,6 +577,9 @@
     document.querySelectorAll('#weekStartOptions .option-btn').forEach(btn => {
       btn.classList.toggle('active', Number(btn.dataset.weekValue) === settings.weekStart);
     });
+    document.querySelectorAll('#sortModeOptions .option-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.sortValue === settings.sortMode);
+    });
   }
 
   document.querySelectorAll('#themeOptions .option-btn').forEach(btn => {
@@ -401,6 +595,15 @@
       settings.weekStart = Number(btn.dataset.weekValue);
       saveSettings();
       renderSettingUI();
+      renderCalendar();
+    });
+  });
+  document.querySelectorAll('#sortModeOptions .option-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      settings.sortMode = btn.dataset.sortValue;
+      saveSettings();
+      renderSettingUI();
+      renderSidebarGoals();
       renderCalendar();
     });
   });
@@ -422,6 +625,7 @@
       if (goalsRes.status === 401) { window.location.href = '/login.html'; return; }
       const body = await goalsRes.json();
       data = body.goals || {};
+      customCategories = Array.isArray(data.__categories) ? data.__categories : [];
     } catch (e) {
       console.error('Could not load goals', e);
     }
@@ -429,8 +633,11 @@
     document.getElementById('loadingState').style.display = 'none';
     weekdaysRow.style.display = 'grid';
 
+    swatchPick = SWATCHES[customCategories.length % SWATCHES.length];
+    renderSwatchRow();
     renderSettingUI();
     renderCategoryList();
+    renderCategoryDropdown();
     renderStarPicker();
     renderCalendar();
     renderSidebarGoals();
