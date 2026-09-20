@@ -473,12 +473,73 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
 .hero-showcase .preview-window.mock {
   position: absolute;
   width: 100%;
-  max-width: 600px;
+  max-width: 440px;
   transform: scale(0.95);
   opacity: 0;
   transition: opacity 0.6s ease, transform 0.6s ease;
 }
 .hero-showcase .preview-window.mock.active { opacity: 1; transform: scale(1); }
+
+/* a realistic "today's goals" list — actual category tags and goal text,
+   in the same visual language as the real app's sidebar goal rows */
+.mock-panel { padding: 18px 22px 22px; }
+
+.mock-panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #EEF1F8;
+}
+
+.mock-day-label {
+  font-family: 'Sora', sans-serif;
+  font-weight: 700;
+  font-size: 15px;
+  color: #171E2E;
+}
+
+.mock-date { font-size: 12px; color: #8A93A6; }
+
+.mock-goal-list { display: flex; flex-direction: column; gap: 12px; }
+
+.mock-goal-row { display: flex; align-items: center; gap: 10px; }
+
+.mock-check {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border-radius: 5px;
+  border: 1.5px solid #C7CFE0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: #FFFFFF;
+}
+.mock-check.checked { background: #3355FF; border-color: #3355FF; }
+
+.mock-goal-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #232B3D;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mock-goal-row.checked .mock-goal-text { color: #9AA3B2; text-decoration: line-through; }
+
+.mock-tag {
+  flex: none;
+  font-size: 10px;
+  font-weight: 700;
+  color: #FFFFFF;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
 
 .showcase-caption {
   position: absolute;
