@@ -606,17 +606,6 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
 .pillar.has-photo h3 { color: #FFFFFF; }
 .pillar.has-photo .pillar-desc { color: rgba(255, 255, 255, 0.88); }
 
-.pillar-glow {
-  position: absolute;
-  inset: -40% -40% auto auto;
-  width: 220px;
-  height: 220px;
-  background: var(--pillar-c, var(--primary));
-  opacity: 0.14;
-  border-radius: 50%;
-  filter: blur(10px);
-}
-
 .pillar-icon {
   width: 46px;
   height: 46px;
