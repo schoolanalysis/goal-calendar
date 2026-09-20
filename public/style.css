@@ -1420,6 +1420,168 @@ h1.month-title {
 
 .goal-count { font-size: 11px; color: var(--primary); font-weight: 600; white-space: nowrap; }
 
+/* ---- subgoals ---- */
+
+.goal-row-hoverable { position: relative; }
+
+.subgoal-add-btn {
+  flex: none;
+  align-self: flex-start;
+  width: 19px;
+  height: 19px;
+  margin-top: 1px;
+  border-radius: 50%;
+  border: 1px dashed var(--line);
+  background: none;
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  opacity: 0;
+  transition: opacity 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.goal-row-hoverable:hover .subgoal-add-btn,
+.goal-row-hoverable:focus-within .subgoal-add-btn { opacity: 1; }
+
+.subgoal-add-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+.subgoal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 7px;
+  padding-left: 8px;
+  border-left: 2px solid var(--line);
+}
+
+.subgoal-row { display: flex; align-items: center; gap: 6px; }
+
+.subgoal-toggle {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1.5px solid var(--primary);
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #FFFFFF;
+  font-size: 9px;
+  padding: 0;
+}
+
+.subgoal-toggle.checked { background: var(--primary); }
+
+.subgoal-text { flex: 1; min-width: 0; font-size: 12px; line-height: 1.3; word-break: break-word; }
+.subgoal-text.done { color: var(--done-strike); text-decoration: line-through; }
+
+.subgoal-remove {
+  flex: none;
+  background: none;
+  border: none;
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-size: 10.5px;
+  padding: 2px 3px;
+  opacity: 0.5;
+}
+.subgoal-remove:hover { opacity: 1; color: var(--danger); }
+
+.subgoal-add-form { margin-top: 7px; }
+
+.subgoal-add-input {
+  width: 100%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 12px;
+  color: var(--ink);
+  font-family: inherit;
+}
+.subgoal-add-input:focus { outline: none; border-color: var(--primary); }
+
+/* ---- day preview (click a day → medium overlay window) ---- */
+
+.day-preview {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  background: var(--bg-elevated);
+  border-radius: 16px;
+  box-shadow: 0 30px 70px var(--shadow);
+  z-index: 202;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: top 0.32s cubic-bezier(.22,.8,.28,1), left 0.32s cubic-bezier(.22,.8,.28,1),
+              width 0.32s cubic-bezier(.22,.8,.28,1), height 0.32s cubic-bezier(.22,.8,.28,1),
+              opacity 0.22s ease;
+}
+
+.day-preview.open { opacity: 1; pointer-events: auto; }
+
+.dp-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.dp-date { font-family: 'Sora', sans-serif; font-weight: 700; font-size: 16px; }
+
+.dp-goal-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dp-add-form {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--line);
+}
+
+.dot-cat-picker { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 2px 0; }
+
+.dp-see-goals {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  background: var(--primary-soft);
+  color: var(--primary-deep);
+  border: none;
+  border-top: 1px solid var(--line);
+  padding: 13px 18px;
+  font-family: 'Sora', sans-serif;
+  font-weight: 700;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.dp-see-goals:hover { background: var(--primary); color: #FFFFFF; }
+
 /* ---- settings drawer ---- */
 
 .drawer-overlay {

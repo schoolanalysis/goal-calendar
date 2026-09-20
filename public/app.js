@@ -37,7 +37,9 @@
     sortMode: 'significance',
     showCategories: true,
     showSignificance: true,
-    sidebarCollapsed: false
+    sidebarCollapsed: false,
+    subgoalsEnabled: true,
+    subgoalsAutoComplete: false
   };
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
@@ -62,6 +64,10 @@
   let categoryFilter = null; // null = show all
   let starPickerValue = 0;
   let selectedCategoryId = null;
+  let previewDay = null; // date currently shown in the day-preview overlay, or null when closed
+  let openSubgoalFormFor = null; // goal id whose inline "add subgoal" form is open, or null
+  let dpStarValue = 0;
+  let dpCategoryId = null;
 
   function pad2(n) { return String(n).padStart(2, '0'); }
   function keyFor(y, m, d) { return y + '-' + pad2(m + 1) + '-' + pad2(d); }
@@ -106,6 +112,16 @@
   const sidebarGoalList = document.getElementById('sidebarGoalList');
   const sidebarStarPicker = document.getElementById('sidebarStarPicker');
   const sidebarAddInput = document.getElementById('sidebarAddInput');
+  const dayPreviewOverlay = document.getElementById('dayPreviewOverlay');
+  const dayPreview = document.getElementById('dayPreview');
+  const dpDate = document.getElementById('dpDate');
+  const dpCloseBtn = document.getElementById('dpCloseBtn');
+  const dpGoalList = document.getElementById('dpGoalList');
+  const dpAddForm = document.getElementById('dpAddForm');
+  const dpAddInput = document.getElementById('dpAddInput');
+  const dpCatPicker = document.getElementById('dpCatPicker');
+  const dpStarPicker = document.getElementById('dpStarPicker');
+  const dpSeeGoalsBtn = document.getElementById('dpSeeGoalsBtn');
 
   // ---------- category sidebar list (compact chips) ----------
   function setChipColors(el, color, active) {
@@ -129,7 +145,7 @@
     allChip.innerHTML = '<span class="category-dot" style="background:currentColor"></span><span>All</span>';
     setChipColors(allChip, 'var(--primary)', categoryFilter === null);
     if (categoryFilter === null) { allChip.style.background = 'var(--primary)'; allChip.style.borderColor = 'var(--primary)'; }
-    allChip.addEventListener('click', () => { categoryFilter = null; renderCategoryList(); renderSidebarGoals(); renderCalendar(); });
+    allChip.addEventListener('click', () => { categoryFilter = null; renderCategoryList(); renderSidebarGoals(); renderDayPreview(); renderCalendar(); });
     categoryListEl.appendChild(allChip);
 
     filterableCategories().forEach(cat => {
@@ -145,6 +161,7 @@
         categoryFilter = (categoryFilter === cat.id) ? null : cat.id;
         renderCategoryList();
         renderSidebarGoals();
+        renderDayPreview();
         renderCalendar();
       });
       wrap.appendChild(btn);
@@ -161,6 +178,7 @@
         scheduleSave();
         renderCategoryList();
         renderSidebarGoals();
+        renderDayPreview();
         renderCalendar();
         renderCategoryDropdown();
       });
@@ -230,6 +248,7 @@
     categoryAddForm.hidden = true;
     renderCategoryList();
     renderCategoryDropdown();
+    renderDayPreview();
   });
 
   document.getElementById('categoryAddCancel').addEventListener('click', () => {
@@ -314,6 +333,54 @@
     });
   }
 
+  // ---------- day-preview star picker (separate state from the sidebar's) ----------
+  dpStarPicker.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const val = Number(btn.dataset.star);
+      dpStarValue = (dpStarValue === val) ? 0 : val;
+      renderDpStarPicker();
+    });
+    btn.addEventListener('mouseenter', () => previewDpStarPicker(Number(btn.dataset.star)));
+  });
+  dpStarPicker.addEventListener('mouseleave', renderDpStarPicker);
+
+  function renderDpStarPicker() {
+    dpStarPicker.querySelectorAll('button').forEach(btn => {
+      const val = Number(btn.dataset.star);
+      btn.classList.remove('preview');
+      btn.classList.toggle('filled', val <= dpStarValue);
+    });
+  }
+
+  function previewDpStarPicker(hoverVal) {
+    dpStarPicker.querySelectorAll('button').forEach(btn => {
+      const val = Number(btn.dataset.star);
+      btn.classList.remove('filled');
+      btn.classList.toggle('preview', val <= hoverVal);
+    });
+  }
+
+  // ---------- day-preview category picker (colored dots only, no names) ----------
+  function renderDpCatPicker() {
+    if (!dpCategoryId || !allCategories().some(c => c.id === dpCategoryId)) {
+      dpCategoryId = allCategories()[0].id;
+    }
+    dpCatPicker.innerHTML = '';
+    allCategories().forEach(cat => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'swatch-btn' + (dpCategoryId === cat.id ? ' selected' : '');
+      b.style.background = cat.color;
+      b.title = cat.name;
+      b.setAttribute('aria-label', 'Category: ' + cat.name);
+      b.addEventListener('click', () => {
+        dpCategoryId = cat.id;
+        renderDpCatPicker();
+      });
+      dpCatPicker.appendChild(b);
+    });
+  }
+
   function starsHtml(n) {
     if (!n) return '';
     return '&#9733;'.repeat(n);
@@ -352,8 +419,203 @@
     fullList[idx] = fullList[swapIdx];
     fullList[swapIdx] = tmp;
     scheduleSave();
+    refreshAfterGoalChange();
+  }
+
+  // Re-renders every place a goal can currently be shown — the sidebar, the
+  // day-preview overlay (a no-op while it's closed) and the calendar dots —
+  // so a change made in one place is immediately reflected in the others.
+  function refreshAfterGoalChange() {
     renderSidebarGoals();
+    renderDayPreview();
     renderCalendar();
+  }
+
+  // Re-focuses the inline "add subgoal" input after a re-render, if one is
+  // open and happens to live inside the given freshly-rendered container.
+  function focusOpenSubgoalInput(container) {
+    if (!openSubgoalFormFor) return;
+    const el = container.querySelector('.subgoal-add-input');
+    if (el) el.focus();
+  }
+
+  // Builds one goal row, shared by the sidebar list and the day-preview
+  // overlay's goal list, including its optional subgoal list and the
+  // hover-revealed "+" button for adding a new subgoal.
+  //   opts: { dotOnlyCategory, canReorder, list, displayIdx, onRefresh }
+  function buildGoalRowEl(g, fullList, opts) {
+    const row = document.createElement('div');
+    row.className = 'sidebar-goal-row goal-row-hoverable';
+
+    const toggle = document.createElement('button');
+    toggle.className = 'goal-toggle' + (g.done ? ' checked' : '');
+    toggle.type = 'button';
+    toggle.innerHTML = g.done ? '&#10003;' : '';
+    toggle.addEventListener('click', () => {
+      g.done = !g.done;
+      scheduleSave();
+      opts.onRefresh();
+    });
+
+    const main = document.createElement('div');
+    main.className = 'sidebar-goal-main';
+
+    const text = document.createElement('div');
+    text.className = 'sidebar-goal-text' + (g.done ? ' done' : '');
+    text.textContent = g.text;
+    main.appendChild(text);
+
+    const meta = document.createElement('div');
+    meta.className = 'sidebar-goal-meta';
+    if (settings.showCategories) {
+      const cat = displayCategory(g.category);
+      if (cat) {
+        if (opts.dotOnlyCategory) {
+          const dot = document.createElement('span');
+          dot.className = 'category-dot';
+          dot.style.background = cat.color;
+          dot.title = cat.name;
+          meta.appendChild(dot);
+        } else {
+          const tag = document.createElement('span');
+          tag.className = 'mini-category-tag';
+          tag.style.background = cat.color;
+          tag.textContent = cat.name;
+          meta.appendChild(tag);
+        }
+      }
+    }
+    if (settings.showSignificance && g.stars) {
+      const stars = document.createElement('span');
+      stars.className = 'mini-stars';
+      stars.innerHTML = starsHtml(g.stars);
+      meta.appendChild(stars);
+    }
+    if (meta.childNodes.length) main.appendChild(meta);
+
+    if (settings.subgoalsEnabled && g.subgoals && g.subgoals.length) {
+      const sgList = document.createElement('div');
+      sgList.className = 'subgoal-list';
+      g.subgoals.forEach(sg => {
+        const sgRow = document.createElement('div');
+        sgRow.className = 'subgoal-row';
+
+        const sgToggle = document.createElement('button');
+        sgToggle.type = 'button';
+        sgToggle.className = 'subgoal-toggle' + (sg.done ? ' checked' : '');
+        sgToggle.innerHTML = sg.done ? '&#10003;' : '';
+        sgToggle.addEventListener('click', () => {
+          sg.done = !sg.done;
+          if (settings.subgoalsAutoComplete) {
+            g.done = g.subgoals.every(s => s.done);
+          }
+          scheduleSave();
+          opts.onRefresh();
+        });
+
+        const sgText = document.createElement('span');
+        sgText.className = 'subgoal-text' + (sg.done ? ' done' : '');
+        sgText.textContent = sg.text;
+
+        const sgRemove = document.createElement('button');
+        sgRemove.type = 'button';
+        sgRemove.className = 'subgoal-remove';
+        sgRemove.innerHTML = '&#10005;';
+        sgRemove.addEventListener('click', () => {
+          g.subgoals = g.subgoals.filter(s => s.id !== sg.id);
+          scheduleSave();
+          opts.onRefresh();
+        });
+
+        sgRow.appendChild(sgToggle);
+        sgRow.appendChild(sgText);
+        sgRow.appendChild(sgRemove);
+        sgList.appendChild(sgRow);
+      });
+      main.appendChild(sgList);
+    }
+
+    if (settings.subgoalsEnabled && openSubgoalFormFor === g.id) {
+      const miniForm = document.createElement('form');
+      miniForm.className = 'subgoal-add-form';
+      const miniInput = document.createElement('input');
+      miniInput.type = 'text';
+      miniInput.className = 'subgoal-add-input';
+      miniInput.placeholder = 'Subgoal name';
+      miniInput.maxLength = 120;
+      miniForm.appendChild(miniInput);
+      miniForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const t = miniInput.value.trim();
+        openSubgoalFormFor = null;
+        if (t) {
+          if (!g.subgoals) g.subgoals = [];
+          g.subgoals.push({ id: 'sg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), text: t, done: false });
+          scheduleSave();
+        }
+        opts.onRefresh();
+      });
+      miniInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { openSubgoalFormFor = null; opts.onRefresh(); }
+      });
+      main.appendChild(miniForm);
+    }
+
+    row.appendChild(toggle);
+    row.appendChild(main);
+
+    if (settings.subgoalsEnabled) {
+      const plus = document.createElement('button');
+      plus.type = 'button';
+      plus.className = 'subgoal-add-btn';
+      plus.setAttribute('aria-label', 'Add subgoal');
+      plus.innerHTML = '&#43;';
+      plus.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openSubgoalFormFor = (openSubgoalFormFor === g.id) ? null : g.id;
+        opts.onRefresh();
+      });
+      row.appendChild(plus);
+    }
+
+    if (opts.canReorder) {
+      const reorderWrap = document.createElement('div');
+      reorderWrap.className = 'goal-reorder';
+
+      const up = document.createElement('button');
+      up.type = 'button';
+      up.className = 'reorder-btn';
+      up.innerHTML = '&#9650;';
+      up.setAttribute('aria-label', 'Move up');
+      up.disabled = opts.displayIdx === 0;
+      up.addEventListener('click', () => moveGoal(fullList, g, -1));
+
+      const down = document.createElement('button');
+      down.type = 'button';
+      down.className = 'reorder-btn';
+      down.innerHTML = '&#9660;';
+      down.setAttribute('aria-label', 'Move down');
+      down.disabled = opts.displayIdx === opts.list.length - 1;
+      down.addEventListener('click', () => moveGoal(fullList, g, 1));
+
+      reorderWrap.appendChild(up);
+      reorderWrap.appendChild(down);
+      row.appendChild(reorderWrap);
+    }
+
+    const remove = document.createElement('button');
+    remove.className = 'goal-remove';
+    remove.type = 'button';
+    remove.innerHTML = '&#10005;';
+    remove.addEventListener('click', () => {
+      const idx = fullList.indexOf(g);
+      if (idx > -1) fullList.splice(idx, 1);
+      scheduleSave();
+      opts.onRefresh();
+    });
+    row.appendChild(remove);
+
+    return row;
   }
 
   // ---------- sidebar today/day panel ----------
@@ -382,92 +644,136 @@
     }
 
     list.forEach((g, displayIdx) => {
-      const row = document.createElement('div');
-      row.className = 'sidebar-goal-row';
-
-      const toggle = document.createElement('button');
-      toggle.className = 'goal-toggle' + (g.done ? ' checked' : '');
-      toggle.type = 'button';
-      toggle.innerHTML = g.done ? '&#10003;' : '';
-      toggle.addEventListener('click', () => {
-        g.done = !g.done;
-        scheduleSave();
-        renderSidebarGoals();
-        renderCalendar();
-      });
-
-      const main = document.createElement('div');
-      main.className = 'sidebar-goal-main';
-
-      const text = document.createElement('div');
-      text.className = 'sidebar-goal-text' + (g.done ? ' done' : '');
-      text.textContent = g.text;
-      main.appendChild(text);
-
-      const meta = document.createElement('div');
-      meta.className = 'sidebar-goal-meta';
-      if (settings.showCategories) {
-        const cat = displayCategory(g.category);
-        if (cat) {
-          const tag = document.createElement('span');
-          tag.className = 'mini-category-tag';
-          tag.style.background = cat.color;
-          tag.textContent = cat.name;
-          meta.appendChild(tag);
-        }
-      }
-      if (settings.showSignificance && g.stars) {
-        const stars = document.createElement('span');
-        stars.className = 'mini-stars';
-        stars.innerHTML = starsHtml(g.stars);
-        meta.appendChild(stars);
-      }
-      if (meta.childNodes.length) main.appendChild(meta);
-
-      row.appendChild(toggle);
-      row.appendChild(main);
-
-      if (canReorder) {
-        const reorderWrap = document.createElement('div');
-        reorderWrap.className = 'goal-reorder';
-
-        const up = document.createElement('button');
-        up.type = 'button';
-        up.className = 'reorder-btn';
-        up.innerHTML = '&#9650;';
-        up.setAttribute('aria-label', 'Move up');
-        up.disabled = displayIdx === 0;
-        up.addEventListener('click', () => moveGoal(fullList, g, -1));
-
-        const down = document.createElement('button');
-        down.type = 'button';
-        down.className = 'reorder-btn';
-        down.innerHTML = '&#9660;';
-        down.setAttribute('aria-label', 'Move down');
-        down.disabled = displayIdx === list.length - 1;
-        down.addEventListener('click', () => moveGoal(fullList, g, 1));
-
-        reorderWrap.appendChild(up);
-        reorderWrap.appendChild(down);
-        row.appendChild(reorderWrap);
-      }
-
-      const remove = document.createElement('button');
-      remove.className = 'goal-remove';
-      remove.type = 'button';
-      remove.innerHTML = '&#10005;';
-      remove.addEventListener('click', () => {
-        const idx = fullList.indexOf(g);
-        if (idx > -1) fullList.splice(idx, 1);
-        scheduleSave();
-        renderSidebarGoals();
-        renderCalendar();
-      });
-      row.appendChild(remove);
-
-      sidebarGoalList.appendChild(row);
+      sidebarGoalList.appendChild(buildGoalRowEl(g, fullList, {
+        dotOnlyCategory: false,
+        canReorder,
+        list,
+        displayIdx,
+        onRefresh: refreshAfterGoalChange
+      }));
     });
+    focusOpenSubgoalInput(sidebarGoalList);
   }
+
+  // ---------- day-preview overlay (click a day → medium window on top of it) ----------
+  function restingPreviewRect() {
+    const width = Math.min(440, window.innerWidth * 0.92);
+    const height = Math.min(560, window.innerHeight * 0.78);
+    return {
+      top: (window.innerHeight - height) / 2,
+      left: (window.innerWidth - width) / 2,
+      width,
+      height
+    };
+  }
+
+  function renderDayPreview() {
+    if (!previewDay) return;
+    const isToday = sameDay(previewDay, today);
+    dpDate.textContent = (isToday ? 'Today · ' : '') + WEEKDAY_FULL[previewDay.getDay()] + ', ' + MONTH_NAMES[previewDay.getMonth()] + ' ' + previewDay.getDate();
+
+    dpGoalList.innerHTML = '';
+    const k = keyForDate(previewDay);
+    const fullList = data[k] || [];
+    const filteredList = categoryFilter ? fullList.filter(g => g.category === categoryFilter) : fullList;
+    const list = sortGoals(filteredList);
+
+    if (!list.length) {
+      const empty = document.createElement('div');
+      empty.className = 'empty-state';
+      empty.textContent = fullList.length ? 'No goals in this category for this day.' : 'No goals yet for this day.';
+      dpGoalList.appendChild(empty);
+    } else {
+      list.forEach(g => {
+        dpGoalList.appendChild(buildGoalRowEl(g, fullList, {
+          dotOnlyCategory: true,
+          canReorder: false,
+          onRefresh: refreshAfterGoalChange
+        }));
+      });
+    }
+    focusOpenSubgoalInput(dpGoalList);
+    renderDpCatPicker();
+  }
+
+  function openDayPreview(cellDate, cellEl) {
+    previewDay = cellDate;
+    renderDayPreview();
+
+    const startRect = cellEl.getBoundingClientRect();
+    dayPreview.style.transition = 'none';
+    dayPreview.style.top = startRect.top + 'px';
+    dayPreview.style.left = startRect.left + 'px';
+    dayPreview.style.width = startRect.width + 'px';
+    dayPreview.style.height = startRect.height + 'px';
+    dayPreview.classList.add('open');
+    dayPreviewOverlay.classList.add('open');
+
+    // Force layout so the browser registers the starting rect before we
+    // animate to the resting size — otherwise the two states collapse into
+    // one and there's no "maximize" motion.
+    void dayPreview.offsetWidth;
+
+    dayPreview.style.transition = '';
+    const rest = restingPreviewRect();
+    dayPreview.style.top = rest.top + 'px';
+    dayPreview.style.left = rest.left + 'px';
+    dayPreview.style.width = rest.width + 'px';
+    dayPreview.style.height = rest.height + 'px';
+  }
+
+  function closeDayPreview() {
+    dayPreview.classList.remove('open');
+    dayPreviewOverlay.classList.remove('open');
+    openSubgoalFormFor = null;
+  }
+
+  dpCloseBtn.addEventListener('click', closeDayPreview);
+  dayPreviewOverlay.addEventListener('click', closeDayPreview);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDayPreview(); });
+
+  // The one moment the sidebar is allowed to jump to a different day: the
+  // user explicitly asked to, via "See goals", closing the preview.
+  dpSeeGoalsBtn.addEventListener('click', () => {
+    if (!previewDay) return;
+    selectedDay = previewDay;
+    if (selectedDay.getFullYear() !== viewYear || selectedDay.getMonth() !== viewMonth) {
+      viewYear = selectedDay.getFullYear();
+      viewMonth = selectedDay.getMonth();
+    }
+    closeDayPreview();
+    renderCalendar();
+    renderSidebarGoals();
+  });
+
+  dpAddForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const text = dpAddInput.value.trim();
+    if (!text || !previewDay) return;
+    const k = keyForDate(previewDay);
+    if (!data[k]) data[k] = [];
+    data[k].push({
+      id: 'g_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+      text: text,
+      done: false,
+      category: dpCategoryId || allCategories()[0].id,
+      stars: dpStarValue
+    });
+    scheduleSave();
+    dpAddInput.value = '';
+    dpStarValue = 0;
+    renderDpStarPicker();
+    refreshAfterGoalChange();
+  });
+
+  // Closes an open inline "add subgoal" form when clicking anywhere else.
+  document.addEventListener('click', (e) => {
+    if (!openSubgoalFormFor) return;
+    if (e.target.closest('.subgoal-add-form') || e.target.closest('.subgoal-add-btn')) return;
+    openSubgoalFormFor = null;
+    renderSidebarGoals();
+    renderDayPreview();
+  });
 
   function addGoalToSelectedDay() {
     const text = sidebarAddInput.value.trim();
@@ -609,9 +915,7 @@
       }
 
       cell.addEventListener('click', () => {
-        selectedDay = cellDate;
-        renderCalendar();
-        renderSidebarGoals();
+        openDayPreview(cellDate, cell);
       });
       grid.appendChild(cell);
     }
@@ -666,12 +970,20 @@
     document.querySelectorAll('#showSignificanceOptions .option-btn').forEach(btn => {
       btn.classList.toggle('active', (btn.dataset.boolValue === 'true') === settings.showSignificance);
     });
+    document.querySelectorAll('#subgoalsEnabledOptions .option-btn').forEach(btn => {
+      btn.classList.toggle('active', (btn.dataset.boolValue === 'true') === settings.subgoalsEnabled);
+    });
+    document.querySelectorAll('#subgoalsAutoCompleteOptions .option-btn').forEach(btn => {
+      btn.classList.toggle('active', (btn.dataset.boolValue === 'true') === settings.subgoalsAutoComplete);
+    });
   }
 
   function applyVisibilitySettings() {
     document.getElementById('categoriesBlock').style.display = settings.showCategories ? '' : 'none';
     document.getElementById('categoryDropdown').style.display = settings.showCategories ? '' : 'none';
     document.getElementById('significanceGroup').style.display = settings.showSignificance ? '' : 'none';
+    dpCatPicker.style.display = settings.showCategories ? '' : 'none';
+    dpStarPicker.style.display = settings.showSignificance ? '' : 'none';
     if (!settings.showCategories && categoryFilter !== null) {
       categoryFilter = null;
     }
@@ -724,6 +1036,7 @@
       applyVisibilitySettings();
       renderCategoryList();
       renderSidebarGoals();
+      renderDayPreview();
     });
   });
   document.querySelectorAll('#showSignificanceOptions .option-btn').forEach(btn => {
@@ -733,6 +1046,23 @@
       renderSettingUI();
       applyVisibilitySettings();
       renderSidebarGoals();
+      renderDayPreview();
+    });
+  });
+  document.querySelectorAll('#subgoalsEnabledOptions .option-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      settings.subgoalsEnabled = btn.dataset.boolValue === 'true';
+      saveSettings();
+      renderSettingUI();
+      renderSidebarGoals();
+      renderDayPreview();
+    });
+  });
+  document.querySelectorAll('#subgoalsAutoCompleteOptions .option-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      settings.subgoalsAutoComplete = btn.dataset.boolValue === 'true';
+      saveSettings();
+      renderSettingUI();
     });
   });
 
@@ -749,6 +1079,7 @@
     renderCategoryList();
     renderCategoryDropdown();
     renderSidebarGoals();
+    renderDayPreview();
     renderCalendar();
   });
 
