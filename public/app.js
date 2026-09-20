@@ -4,7 +4,10 @@
   // fallback for a goal whose category was later deleted (findCategory
   // returns null there, and no tag is shown at all).
   const ANY_CATEGORY = { id: 'any', name: 'Any', color: '#9AA3B2' };
-  const CATEGORIES = [
+  // Seeded into a brand-new account's category list on first load only.
+  // After that, the stored list (which the user can freely add to or
+  // delete from, defaults included) is the source of truth.
+  const DEFAULT_CATEGORIES = [
     { id: 'academic', name: 'Academic', color: '#3355FF' },
     { id: 'athletic', name: 'Athletic', color: '#0FBB63' },
     { id: 'extracurricular', name: 'Extracurricular', color: '#8B3FF2' },
@@ -12,12 +15,12 @@
   ];
   const SWATCHES = ['#3355FF', '#0FBB63', '#8B3FF2', '#FF7A17', '#F23F7A', '#08B5D6', '#E5342E', '#D6B60A'];
 
-  let customCategories = [];
+  let categories = [];
 
-  function allCategories() { return [ANY_CATEGORY].concat(CATEGORIES, customCategories); }
+  function allCategories() { return [ANY_CATEGORY].concat(categories); }
   // Categories worth filtering by — excludes "Any", which isn't shown as
   // a filter chip since it carries no visible tag to filter toward.
-  function filterableCategories() { return CATEGORIES.concat(customCategories); }
+  function filterableCategories() { return categories; }
   // Returns null when the id doesn't resolve to a real category (e.g. the
   // category was later removed) — callers decide whether to show nothing.
   // Also treated as "no tag" by display code for the id 'any' itself.
@@ -71,7 +74,7 @@
     clearTimeout(saveTimer);
     saveTimer = setTimeout(async () => {
       try {
-        data.__categories = customCategories;
+        data.__categories = categories;
         const res = await fetch('/api/goals', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -146,25 +149,22 @@
       });
       wrap.appendChild(btn);
 
-      const isCustom = customCategories.some(c => c.id === cat.id);
-      if (isCustom) {
-        const remove = document.createElement('button');
-        remove.type = 'button';
-        remove.className = 'chip-remove';
-        remove.setAttribute('aria-label', 'Remove ' + cat.name + ' category');
-        remove.innerHTML = '&#10005;';
-        remove.addEventListener('click', (e) => {
-          e.stopPropagation();
-          customCategories = customCategories.filter(c => c.id !== cat.id);
-          if (categoryFilter === cat.id) categoryFilter = null;
-          scheduleSave();
-          renderCategoryList();
-          renderSidebarGoals();
-          renderCalendar();
-          renderCategoryDropdown();
-        });
-        wrap.appendChild(remove);
-      }
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'chip-remove';
+      remove.setAttribute('aria-label', 'Remove ' + cat.name + ' category');
+      remove.innerHTML = '&#10005;';
+      remove.addEventListener('click', (e) => {
+        e.stopPropagation();
+        categories = categories.filter(c => c.id !== cat.id);
+        if (categoryFilter === cat.id) categoryFilter = null;
+        scheduleSave();
+        renderCategoryList();
+        renderSidebarGoals();
+        renderCalendar();
+        renderCategoryDropdown();
+      });
+      wrap.appendChild(remove);
 
       categoryListEl.appendChild(wrap);
     });
@@ -221,11 +221,11 @@
     const name = categoryAddInput.value.trim();
     if (!name) return;
     const id = 'custom_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
-    customCategories.push({ id, name, color: swatchPick });
+    categories.push({ id, name, color: swatchPick });
     scheduleSave();
     categoryAddInput.value = '';
     customColorPicked = false;
-    swatchPick = SWATCHES[customCategories.length % SWATCHES.length];
+    swatchPick = SWATCHES[categories.length % SWATCHES.length];
     renderSwatchRow();
     categoryAddForm.hidden = true;
     renderCategoryList();
@@ -582,6 +582,20 @@
         });
         cell.appendChild(preview);
 
+        if (settings.showCategories) {
+          const dots = document.createElement('div');
+          dots.className = 'day-dots';
+          sortGoals(goals).forEach(g => {
+            const cat = displayCategory(g.category);
+            if (!cat) return;
+            const dot = document.createElement('span');
+            dot.className = 'day-dot';
+            dot.style.background = cat.color;
+            dots.appendChild(dot);
+          });
+          if (dots.childNodes.length) cell.appendChild(dots);
+        }
+
         const count = document.createElement('div');
         const doneCount = goals.filter(g => g.done).length;
         count.className = 'goal-count';
@@ -734,7 +748,12 @@
       if (goalsRes.status === 401) { window.location.href = '/login.html'; return; }
       const body = await goalsRes.json();
       data = body.goals || {};
-      customCategories = Array.isArray(data.__categories) ? data.__categories : [];
+      // A brand-new account has no stored category list yet — seed it with
+      // the defaults. Once saved, whatever's stored (additions, deletions,
+      // built-ins included) is the source of truth from then on.
+      categories = Array.isArray(data.__categories)
+        ? data.__categories
+        : DEFAULT_CATEGORIES.map(c => Object.assign({}, c));
     } catch (e) {
       console.error('Could not load goals', e);
     }
@@ -742,7 +761,7 @@
     document.getElementById('loadingState').style.display = 'none';
     weekdaysRow.style.display = 'grid';
 
-    swatchPick = SWATCHES[customCategories.length % SWATCHES.length];
+    swatchPick = SWATCHES[categories.length % SWATCHES.length];
     renderSwatchRow();
     renderSettingUI();
     applyVisibilitySettings();
