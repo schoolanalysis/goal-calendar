@@ -432,12 +432,15 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
 /* ---- pillars: hover-to-expand three-part section ---- */
 
 .pillars-section {
-  max-width: 1080px;
-  margin: 2vh auto 10vh;
-  padding: 0 24px;
+  margin: 2vh 0 10vh;
 }
 
-.pillars-heading { text-align: center; margin-bottom: 34px; }
+.pillars-heading {
+  max-width: 640px;
+  margin: 0 auto 34px;
+  padding: 0 24px;
+  text-align: center;
+}
 
 .pillars-heading h2 {
   font-family: 'Sora', sans-serif;
@@ -451,27 +454,30 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
 
 .pillars-inner {
   display: flex;
-  gap: 14px;
-  height: 360px;
+  gap: 0;
+  height: 440px;
+  width: 100%;
 }
 
 .pillar {
   flex: 1 1 0;
   min-width: 0;
   position: relative;
-  border-radius: 18px;
-  padding: 26px 24px;
+  padding: 32px 32px;
   overflow: hidden;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  border: 1px solid var(--line);
+  border: none;
+  border-right: 1px solid var(--line);
   background: var(--bg-elevated);
-  transition: flex-grow 0.5s cubic-bezier(.22,.8,.28,1), border-color 0.3s ease, box-shadow 0.3s ease;
+  transition: flex-grow 0.5s cubic-bezier(.22,.8,.28,1), box-shadow 0.3s ease;
 }
 
-.pillar:hover, .pillar:focus-within { box-shadow: 0 20px 40px var(--shadow); border-color: var(--pillar-c, var(--primary)); outline: none; }
+.pillar:last-child { border-right: none; }
+
+.pillar:hover, .pillar:focus-within { box-shadow: inset 0 0 0 1px var(--pillar-c, var(--primary)); outline: none; z-index: 1; }
 
 .pillars-inner:has(.pillar:hover, .pillar:focus-within) .pillar { flex-grow: 0.6; }
 .pillars-inner:has(.pillar:hover, .pillar:focus-within) .pillar:hover,
@@ -534,8 +540,15 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
 .pillar:hover .pillar-desc, .pillar:focus-within .pillar-desc { opacity: 1; max-height: 200px; }
 
 @media (max-width: 760px) {
-  .pillars-inner { flex-direction: column; height: auto; gap: 12px; }
-  .pillar { flex: 1 1 auto !important; justify-content: flex-start; padding: 22px; }
+  .pillars-inner { flex-direction: column; height: auto; gap: 0; }
+  .pillar {
+    flex: 1 1 auto !important;
+    justify-content: flex-start;
+    padding: 26px 24px;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+  }
+  .pillar:last-child { border-bottom: none; }
   .pillar-icon { margin-bottom: 0; }
   .pillar h3 { white-space: normal; }
   .pillar-desc { opacity: 1; max-height: none; }
