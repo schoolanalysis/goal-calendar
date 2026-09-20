@@ -51,51 +51,48 @@
       <div class="showcase-mockups">
         <div class="preview-window mock active" data-slide="0">
           <div class="preview-chrome"><span></span><span></span><span></span></div>
-          <div class="preview-body">
-            <div class="preview-sidebar">
-              <div class="preview-brand"></div>
-              <div class="preview-cat" style="--c:#3355FF"></div>
-              <div class="preview-cat" style="--c:#0FBB63"></div>
-              <div class="preview-cat" style="--c:#8B3FF2"></div>
-              <div class="preview-cat" style="--c:#FF7A17"></div>
+          <div class="mock-panel">
+            <div class="mock-panel-head">
+              <span class="mock-day-label">Today</span>
+              <span class="mock-date">Tue, Oct 14</span>
             </div>
-            <div class="preview-main">
-              <div class="preview-toprow"><span class="pm-title"></span><span class="pm-pill"></span></div>
-              <div class="preview-grid" id="mockGridSchool"></div>
+            <div class="mock-goal-list">
+              <div class="mock-goal-row"><span class="mock-check"></span><span class="mock-goal-text">Chemistry review</span><span class="mock-tag" style="background:#3355FF">Academic</span></div>
+              <div class="mock-goal-row"><span class="mock-check"></span><span class="mock-goal-text">Orchestra rehearsal</span><span class="mock-tag" style="background:#8B3FF2">Extracurricular</span></div>
+              <div class="mock-goal-row"><span class="mock-check"></span><span class="mock-goal-text">Soccer practice</span><span class="mock-tag" style="background:#0FBB63">Athletic</span></div>
+              <div class="mock-goal-row checked"><span class="mock-check checked">&#10003;</span><span class="mock-goal-text">Turn in history essay</span><span class="mock-tag" style="background:#3355FF">Academic</span></div>
             </div>
           </div>
         </div>
 
         <div class="preview-window mock" data-slide="1">
           <div class="preview-chrome"><span></span><span></span><span></span></div>
-          <div class="preview-body">
-            <div class="preview-sidebar">
-              <div class="preview-brand"></div>
-              <div class="preview-cat" style="--c:#3355FF"></div>
-              <div class="preview-cat" style="--c:#0FBB63"></div>
-              <div class="preview-cat" style="--c:#8B3FF2"></div>
-              <div class="preview-cat" style="--c:#FF7A17"></div>
+          <div class="mock-panel">
+            <div class="mock-panel-head">
+              <span class="mock-day-label">Today</span>
+              <span class="mock-date">Tue, Oct 14</span>
             </div>
-            <div class="preview-main">
-              <div class="preview-toprow"><span class="pm-title"></span><span class="pm-pill"></span></div>
-              <div class="preview-grid" id="mockGridWork"></div>
+            <div class="mock-goal-list">
+              <div class="mock-goal-row"><span class="mock-check"></span><span class="mock-goal-text">Bring up Q3 roadmap in standup</span><span class="mock-tag" style="background:#C97A0A">Meetings</span></div>
+              <div class="mock-goal-row"><span class="mock-check"></span><span class="mock-goal-text">Ask about budget approval</span><span class="mock-tag" style="background:#C97A0A">Meetings</span></div>
+              <div class="mock-goal-row"><span class="mock-check"></span><span class="mock-goal-text">Prep slides for client call</span><span class="mock-tag" style="background:#C97A0A">Meetings</span></div>
+              <div class="mock-goal-row checked"><span class="mock-check checked">&#10003;</span><span class="mock-goal-text">Follow up on action items</span><span class="mock-tag" style="background:#C97A0A">Meetings</span></div>
             </div>
           </div>
         </div>
 
         <div class="preview-window mock" data-slide="2">
           <div class="preview-chrome"><span></span><span></span><span></span></div>
-          <div class="preview-body">
-            <div class="preview-sidebar">
-              <div class="preview-brand"></div>
-              <div class="preview-cat" style="--c:#3355FF"></div>
-              <div class="preview-cat" style="--c:#0FBB63"></div>
-              <div class="preview-cat" style="--c:#8B3FF2"></div>
-              <div class="preview-cat" style="--c:#FF7A17"></div>
+          <div class="mock-panel">
+            <div class="mock-panel-head">
+              <span class="mock-day-label">Today</span>
+              <span class="mock-date">Tue, Oct 14</span>
             </div>
-            <div class="preview-main">
-              <div class="preview-toprow"><span class="pm-title"></span><span class="pm-pill"></span></div>
-              <div class="preview-grid" id="mockGridLife"></div>
+            <div class="mock-goal-list">
+              <div class="mock-goal-row"><span class="mock-check"></span><span class="mock-goal-text">Run a 5k</span><span class="mock-tag" style="background:#12B886">Health</span></div>
+              <div class="mock-goal-row"><span class="mock-check"></span><span class="mock-goal-text">Drink 2.5L of water</span><span class="mock-tag" style="background:#12B886">Health</span></div>
+              <div class="mock-goal-row checked"><span class="mock-check checked">&#10003;</span><span class="mock-goal-text">Do laundry</span><span class="mock-tag" style="background:#FF7A17">Personal</span></div>
+              <div class="mock-goal-row"><span class="mock-check"></span><span class="mock-goal-text">Put $150 for this week's groceries</span><span class="mock-tag" style="background:#D6B60A">Budget</span></div>
             </div>
           </div>
         </div>
@@ -186,37 +183,6 @@
       { title: 'For Work', desc: 'Keep projects and deadlines on the same calendar as everything else on your plate.' },
       { title: 'For Life', desc: "Fit in workouts, hobbies, and errands — the goals that don't come with a deadline." }
     ];
-
-    // Populate each mock calendar grid with a handful of colored goal dots
-    // so each slide reads as "in use" rather than an empty grid.
-    function buildMockGrid(id, dotColors, todayIndex) {
-      const grid = document.getElementById(id);
-      if (!grid) return;
-      const pattern = [3, 8, 8, 12, 16, 19, 23, 23];
-      const colorPattern = [0, 0, 1, 1, 2, 0, 1, 2];
-      const cellsWithGoals = {};
-      pattern.forEach((cellIdx, i) => {
-        if (!cellsWithGoals[cellIdx]) cellsWithGoals[cellIdx] = [];
-        cellsWithGoals[cellIdx].push(dotColors[colorPattern[i] % dotColors.length]);
-      });
-      for (let i = 0; i < 28; i++) {
-        const cell = document.createElement('div');
-        cell.className = 'pg-cell';
-        if (i === todayIndex) cell.classList.add('is-today');
-        if (cellsWithGoals[i]) {
-          cell.classList.add('has-goal');
-          cellsWithGoals[i].forEach(c => {
-            const dot = document.createElement('i');
-            dot.style.setProperty('--c', c);
-            cell.appendChild(dot);
-          });
-        }
-        grid.appendChild(cell);
-      }
-    }
-    buildMockGrid('mockGridSchool', ['#3355FF', '#8B3FF2'], 16);
-    buildMockGrid('mockGridWork', ['#F5A623', '#3355FF'], 9);
-    buildMockGrid('mockGridLife', ['#12B886', '#FF7A17'], 21);
 
     const card = document.getElementById('showcaseCard');
     if (!card) return;
