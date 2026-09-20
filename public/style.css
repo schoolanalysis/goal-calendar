@@ -1401,7 +1401,15 @@ h1.month-title {
 
 /* a compact cluster of category-colored dots — one per goal that day,
    same look as the mock calendar shown on the login/register pages */
-.day-dots { display: flex; flex-wrap: wrap; gap: 3px; }
+.day-cell-footer {
+  margin-top: auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.day-dots { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 3px; }
 
 .day-dot {
   width: 6px;
@@ -1410,7 +1418,7 @@ h1.month-title {
   flex: none;
 }
 
-.goal-count { margin-top: auto; font-size: 11px; color: var(--primary); font-weight: 600; }
+.goal-count { font-size: 11px; color: var(--primary); font-weight: 600; white-space: nowrap; }
 
 /* ---- settings drawer ---- */
 

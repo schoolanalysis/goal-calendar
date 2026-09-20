@@ -582,6 +582,15 @@
         });
         cell.appendChild(preview);
 
+        const footer = document.createElement('div');
+        footer.className = 'day-cell-footer';
+
+        const count = document.createElement('div');
+        const doneCount = goals.filter(g => g.done).length;
+        count.className = 'goal-count';
+        count.textContent = doneCount + ' / ' + goals.length + ' done';
+        footer.appendChild(count);
+
         if (settings.showCategories) {
           const dots = document.createElement('div');
           dots.className = 'day-dots';
@@ -593,14 +602,10 @@
             dot.style.background = cat.color;
             dots.appendChild(dot);
           });
-          if (dots.childNodes.length) cell.appendChild(dots);
+          if (dots.childNodes.length) footer.appendChild(dots);
         }
 
-        const count = document.createElement('div');
-        const doneCount = goals.filter(g => g.done).length;
-        count.className = 'goal-count';
-        count.textContent = doneCount + ' / ' + goals.length + ' done';
-        cell.appendChild(count);
+        cell.appendChild(footer);
       }
 
       cell.addEventListener('click', () => {
