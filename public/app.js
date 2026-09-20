@@ -731,6 +731,22 @@
     });
   });
 
+  document.getElementById('restoreDefaultsBtn').addEventListener('click', () => {
+    let restored = false;
+    DEFAULT_CATEGORIES.forEach(def => {
+      if (!categories.some(c => c.id === def.id)) {
+        categories.push(Object.assign({}, def));
+        restored = true;
+      }
+    });
+    if (!restored) return;
+    scheduleSave();
+    renderCategoryList();
+    renderCategoryDropdown();
+    renderSidebarGoals();
+    renderCalendar();
+  });
+
   document.getElementById('logoutBtn').addEventListener('click', async () => {
     await fetch('/api/logout', { method: 'POST' });
     window.location.href = '/login.html';
