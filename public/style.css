@@ -576,7 +576,7 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
   border: none;
   border-right: 1px solid var(--line);
   background: var(--bg-elevated);
-  transition: flex-grow 0.5s cubic-bezier(.22,.8,.28,1), box-shadow 0.3s ease;
+  transition: flex-grow 0.9s cubic-bezier(.22,.8,.28,1), box-shadow 0.3s ease;
 }
 
 .pillar:last-child { border-right: none; }
@@ -586,6 +586,25 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
 .pillars-inner:has(.pillar:hover, .pillar:focus-within) .pillar { flex-grow: 0.6; }
 .pillars-inner:has(.pillar:hover, .pillar:focus-within) .pillar:hover,
 .pillars-inner:has(.pillar:hover, .pillar:focus-within) .pillar:focus-within { flex-grow: 2.3; }
+
+.pillar.has-photo {
+  background-size: cover;
+  background-position: center;
+  border-right-color: rgba(255, 255, 255, 0.25);
+}
+
+.pillar.has-photo::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(180deg, rgba(10, 14, 24, 0.15) 0%, rgba(10, 14, 24, 0.78) 100%);
+}
+
+.pillar.has-photo > * { position: relative; z-index: 1; }
+.pillar.has-photo .pillar-num { color: rgba(255, 255, 255, 0.75); }
+.pillar.has-photo h3 { color: #FFFFFF; }
+.pillar.has-photo .pillar-desc { color: rgba(255, 255, 255, 0.88); }
 
 .pillar-glow {
   position: absolute;
@@ -638,7 +657,7 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
   margin: 10px 0 0;
   opacity: 0;
   max-height: 0;
-  transition: opacity 0.4s ease 0.05s, max-height 0.5s ease;
+  transition: opacity 0.65s ease 0.15s, max-height 0.9s ease;
 }
 
 .pillar:hover .pillar-desc, .pillar:focus-within .pillar-desc { opacity: 1; max-height: 200px; }
@@ -651,8 +670,10 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
     padding: 26px 24px;
     border-right: none;
     border-bottom: 1px solid var(--line);
+    min-height: 220px;
   }
   .pillar:last-child { border-bottom: none; }
+  .pillar.has-photo { border-bottom-color: rgba(255, 255, 255, 0.25); }
   .pillar-icon { margin-bottom: 0; }
   .pillar h3 { white-space: normal; }
   .pillar-desc { opacity: 1; max-height: none; }
