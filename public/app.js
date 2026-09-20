@@ -15,9 +15,17 @@
   let customCategories = [];
 
   function allCategories() { return [ANY_CATEGORY].concat(CATEGORIES, customCategories); }
+  // Categories worth filtering by — excludes "Any", which isn't shown as
+  // a filter chip since it carries no visible tag to filter toward.
+  function filterableCategories() { return CATEGORIES.concat(customCategories); }
   // Returns null when the id doesn't resolve to a real category (e.g. the
   // category was later removed) — callers decide whether to show nothing.
+  // Also treated as "no tag" by display code for the id 'any' itself.
   function findCategory(id) { return allCategories().find(c => c.id === id) || null; }
+  function displayCategory(id) {
+    const cat = findCategory(id);
+    return (cat && cat.id !== 'any') ? cat : null;
+  }
 
   const SETTINGS_KEY = 'goalkeepr-settings';
   let settings = {
@@ -121,7 +129,7 @@
     allChip.addEventListener('click', () => { categoryFilter = null; renderCategoryList(); renderSidebarGoals(); renderCalendar(); });
     categoryListEl.appendChild(allChip);
 
-    allCategories().forEach(cat => {
+    filterableCategories().forEach(cat => {
       const wrap = document.createElement('span');
       wrap.className = 'category-chip' + (categoryFilter === cat.id ? ' active' : '');
       setChipColors(wrap, cat.color, categoryFilter === cat.id);
@@ -399,7 +407,7 @@
       const meta = document.createElement('div');
       meta.className = 'sidebar-goal-meta';
       if (settings.showCategories) {
-        const cat = findCategory(g.category);
+        const cat = displayCategory(g.category);
         if (cat) {
           const tag = document.createElement('span');
           tag.className = 'mini-category-tag';
@@ -562,7 +570,14 @@
         sortGoals(goals).slice(0, 2).forEach(g => {
           const span = document.createElement('span');
           span.className = 'pv-item' + (g.done ? ' done' : '');
-          span.textContent = g.text;
+          const cat = settings.showCategories ? displayCategory(g.category) : null;
+          if (cat) {
+            const dot = document.createElement('span');
+            dot.className = 'pv-dot';
+            dot.style.background = cat.color;
+            span.appendChild(dot);
+          }
+          span.appendChild(document.createTextNode(g.text));
           preview.appendChild(span);
         });
         cell.appendChild(preview);
