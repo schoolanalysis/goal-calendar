@@ -27,17 +27,72 @@
   <span class="blob blob-b"></span>
 
   <section class="hero">
-    <img class="hero-logo" src="/logo.svg" alt="">
-    <span class="eyebrow">A calendar built for goals</span>
-    <h1>Keep your goals where <span class="accent-text">your days</span> are.</h1>
-    <p class="tagline">
-      Goalkeepr is a calendar built around one idea: goals live on days.
-      Write what matters for today, tag it, rate how much it matters,
-      and watch your month fill in as you follow through.
-    </p>
-    <div class="cta-row" id="heroCta">
-      <a class="solid" href="/register.html">Get started free</a>
-      <a class="ghost" href="/login.html">I already have an account</a>
+    <div class="hero-copy">
+      <span class="eyebrow">A calendar built for goals</span>
+      <h1>Keep your goals where <span class="accent-text">your days</span> are.</h1>
+      <p class="tagline">
+        Goalkeepr is a calendar built around one idea: goals live on days.
+        Write what matters for today, tag it, rate how much it matters,
+        and watch your month fill in as you follow through.
+      </p>
+      <div class="cta-row" id="heroCta">
+        <a class="solid" href="/register.html">Get started free</a>
+        <a class="ghost" href="/login.html">I already have an account</a>
+      </div>
+    </div>
+
+    <div class="hero-showcase">
+      <div class="showcase-card" id="showcaseCard">
+
+        <div class="showcase-bg active" data-slide="0" style="background: linear-gradient(150deg, #3355FF 0%, #1B3FCB 100%);"></div>
+        <div class="showcase-bg" data-slide="1" style="background: linear-gradient(150deg, #F5A623 0%, #C97A0A 100%);"></div>
+        <div class="showcase-bg" data-slide="2" style="background: linear-gradient(150deg, #12B886 0%, #0B8C63 100%);"></div>
+
+        <div class="showcase-illustration">
+          <svg class="active" data-slide="0" viewBox="0 0 200 200" fill="none">
+            <path d="M20 66 Q100 38 180 66 L180 146 Q100 118 20 146 Z" fill="#FFFFFF"/>
+            <path d="M100 66 L100 146" stroke="#DCE4FF" stroke-width="3"/>
+            <path d="M36 92 L90 84 M36 106 L90 99 M36 120 L82 114 M110 84 L164 92 M112 99 L164 106 M118 114 L164 120" stroke="#3355FF" stroke-width="4" stroke-linecap="round"/>
+            <path d="M48 44 L100 22 L152 44 L100 66 Z" fill="#1B3FCB"/>
+            <path d="M100 66 L100 46" stroke="#1B3FCB" stroke-width="3"/>
+            <circle cx="152" cy="44" r="4" fill="#1B3FCB"/>
+            <path d="M152 44 L152 64 Q152 70 144 70" stroke="#1B3FCB" stroke-width="3" fill="none" stroke-linecap="round"/>
+          </svg>
+          <svg data-slide="1" viewBox="0 0 200 200" fill="none">
+            <rect x="38" y="86" width="124" height="78" rx="14" fill="#FFFFFF"/>
+            <path d="M80 86 V70 Q80 58 92 58 H108 Q120 58 120 70 V86" fill="none" stroke="#FFFFFF" stroke-width="7"/>
+            <rect x="38" y="112" width="124" height="16" fill="#F5A623"/>
+            <circle cx="100" cy="120" r="7" fill="#FFFFFF"/>
+            <path d="M56 145 L76 145 M56 155 L96 155" stroke="#F5A623" stroke-width="4" stroke-linecap="round"/>
+            <path d="M124 142 L134 152 L150 134" stroke="#C97A0A" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <svg data-slide="2" viewBox="0 0 200 200" fill="none">
+            <g stroke="#FFFFFF" stroke-width="5" stroke-linecap="round">
+              <path d="M100 26 V10"/>
+              <path d="M100 154 V170"/>
+              <path d="M32 90 H16"/>
+              <path d="M184 90 H168"/>
+              <path d="M54 44 L42 32"/>
+              <path d="M146 44 L158 32"/>
+              <path d="M54 136 L42 148"/>
+              <path d="M146 136 L158 148"/>
+            </g>
+            <circle cx="100" cy="90" r="42" fill="#FFFFFF"/>
+            <path d="M100 108 C86 94 64 99 64 118 C64 136 100 160 100 160 C100 160 136 136 136 118 C136 99 114 94 100 108Z" fill="#0B8C63"/>
+          </svg>
+        </div>
+
+        <div class="showcase-text">
+          <h3 id="showcaseTitle">For School</h3>
+          <p id="showcaseDesc">Track assignments, exams, and study sessions without losing track of what's due when.</p>
+        </div>
+
+        <div class="showcase-dots">
+          <button type="button" class="showcase-dot active" data-slide="0" aria-label="Show: For School"></button>
+          <button type="button" class="showcase-dot" data-slide="1" aria-label="Show: For Work"></button>
+          <button type="button" class="showcase-dot" data-slide="2" aria-label="Show: For Life"></button>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -108,6 +163,54 @@
     document.getElementById('heroCta').innerHTML =
       '<a class="solid" href="/app.html">Go to your calendar</a>';
   }).catch(() => {});
+
+  // Rotating "for school / for work / for life" showcase card.
+  (function () {
+    const SLIDES = [
+      { title: 'For School', desc: "Track assignments, exams, and study sessions without losing track of what's due when." },
+      { title: 'For Work', desc: 'Keep projects and deadlines on the same calendar as everything else on your plate.' },
+      { title: 'For Life', desc: "Fit in workouts, hobbies, and errands — the goals that don't come with a deadline." }
+    ];
+    const card = document.getElementById('showcaseCard');
+    if (!card) return;
+    const bgs = card.querySelectorAll('.showcase-bg');
+    const svgs = card.querySelectorAll('.showcase-illustration svg');
+    const dots = card.querySelectorAll('.showcase-dot');
+    const titleEl = document.getElementById('showcaseTitle');
+    const descEl = document.getElementById('showcaseDesc');
+    const textEl = card.querySelector('.showcase-text');
+
+    let current = 0;
+    let timer = null;
+
+    function goTo(index) {
+      if (index === current) return;
+      current = index;
+      bgs.forEach(el => el.classList.toggle('active', Number(el.dataset.slide) === current));
+      svgs.forEach(el => el.classList.toggle('active', Number(el.dataset.slide) === current));
+      dots.forEach(el => el.classList.toggle('active', Number(el.dataset.slide) === current));
+
+      textEl.classList.add('swapping');
+      setTimeout(() => {
+        titleEl.textContent = SLIDES[current].title;
+        descEl.textContent = SLIDES[current].desc;
+        textEl.classList.remove('swapping');
+      }, 220);
+    }
+
+    function next() { goTo((current + 1) % SLIDES.length); }
+
+    function startTimer() { timer = setInterval(next, 4000); }
+    function stopTimer() { clearInterval(timer); }
+
+    dots.forEach(dot => {
+      dot.addEventListener('click', () => { goTo(Number(dot.dataset.slide)); stopTimer(); startTimer(); });
+    });
+    card.addEventListener('mouseenter', stopTimer);
+    card.addEventListener('mouseleave', startTimer);
+
+    startTimer();
+  })();
 </script>
 </body>
 </html>

@@ -1,4 +1,9 @@
 (function () {
+  // "Any" is a permanent, non-removable pseudo-category for goals that
+  // deliberately don't fit a specific one — distinct from the display
+  // fallback for a goal whose category was later deleted (findCategory
+  // returns null there, and no tag is shown at all).
+  const ANY_CATEGORY = { id: 'any', name: 'Any', color: '#9AA3B2' };
   const CATEGORIES = [
     { id: 'academic', name: 'Academic', color: '#3355FF' },
     { id: 'athletic', name: 'Athletic', color: '#0FBB63' },
@@ -9,7 +14,7 @@
 
   let customCategories = [];
 
-  function allCategories() { return CATEGORIES.concat(customCategories); }
+  function allCategories() { return [ANY_CATEGORY].concat(CATEGORIES, customCategories); }
   // Returns null when the id doesn't resolve to a real category (e.g. the
   // category was later removed) — callers decide whether to show nothing.
   function findCategory(id) { return allCategories().find(c => c.id === id) || null; }
@@ -641,6 +646,7 @@
   function applySidebarCollapsed() {
     document.getElementById('sidebar').classList.toggle('is-collapsed', settings.sidebarCollapsed);
     const btn = document.getElementById('sidebarCollapseBtn');
+    btn.classList.toggle('is-collapsed', settings.sidebarCollapsed);
     btn.setAttribute('aria-label', settings.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar');
     btn.title = settings.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar';
   }
