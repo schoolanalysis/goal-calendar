@@ -646,6 +646,7 @@
   function applySidebarCollapsed() {
     document.getElementById('sidebar').classList.toggle('is-collapsed', settings.sidebarCollapsed);
     const btn = document.getElementById('sidebarCollapseBtn');
+    btn.classList.toggle('is-collapsed', settings.sidebarCollapsed);
     btn.setAttribute('aria-label', settings.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar');
     btn.title = settings.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar';
   }
