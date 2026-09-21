@@ -66,6 +66,7 @@
   let selectedCategoryId = null;
   let previewDay = null; // date currently shown in the day-preview overlay, or null when closed
   let openSubgoalFormFor = null; // goal id whose inline "add subgoal" form is open, or null
+  let justCompletedId = null; // goal/subgoal id to play a completion "pop" on, for one render pass
   let dpStarValue = 0;
   let dpCategoryId = null;
 
@@ -429,6 +430,7 @@
     renderSidebarGoals();
     renderDayPreview();
     renderCalendar();
+    justCompletedId = null;
   }
 
   // Re-focuses the inline "add subgoal" input after a re-render, if one is
@@ -448,11 +450,12 @@
     row.className = 'sidebar-goal-row goal-row-hoverable';
 
     const toggle = document.createElement('button');
-    toggle.className = 'goal-toggle' + (g.done ? ' checked' : '');
+    toggle.className = 'goal-toggle' + (g.done ? ' checked' : '') + (justCompletedId === g.id ? ' pop' : '');
     toggle.type = 'button';
     toggle.innerHTML = g.done ? '&#10003;' : '';
     toggle.addEventListener('click', () => {
       g.done = !g.done;
+      justCompletedId = g.done ? g.id : null;
       scheduleSave();
       opts.onRefresh();
     });
@@ -502,13 +505,18 @@
 
         const sgToggle = document.createElement('button');
         sgToggle.type = 'button';
-        sgToggle.className = 'subgoal-toggle' + (sg.done ? ' checked' : '');
+        sgToggle.className = 'subgoal-toggle' + (sg.done ? ' checked' : '') + (justCompletedId === sg.id ? ' pop' : '');
         sgToggle.innerHTML = sg.done ? '&#10003;' : '';
         sgToggle.addEventListener('click', () => {
           sg.done = !sg.done;
+          let poppedId = sg.done ? sg.id : null;
           if (settings.subgoalsAutoComplete) {
+            const wasParentDone = g.done;
             g.done = g.subgoals.every(s => s.done);
+            // The whole goal just finished — celebrate that instead of the last subgoal.
+            if (g.done && !wasParentDone) poppedId = g.id;
           }
+          justCompletedId = poppedId;
           scheduleSave();
           opts.onRefresh();
         });
