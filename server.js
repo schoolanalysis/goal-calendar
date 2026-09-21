@@ -53,6 +53,22 @@ async function initDb() {
       data TEXT NOT NULL DEFAULT '{}',
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS checklist_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      text TEXT NOT NULL,
+      checked INTEGER NOT NULL DEFAULT 0,
+      position INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS checklist_state (
+      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      last_reset_date TEXT NOT NULL,
+      current_streak INTEGER NOT NULL DEFAULT 0,
+      longest_streak INTEGER NOT NULL DEFAULT 0
+    );
   `);
 }
 
@@ -77,8 +93,105 @@ const queries = {
             VALUES (?, ?, datetime('now'))
             ON CONFLICT(user_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`,
       args: [userId, data]
-    })
+    }),
+  checklist: {
+    getState: (userId) =>
+      db.execute({ sql: 'SELECT * FROM checklist_state WHERE user_id = ?', args: [userId] })
+        .then(r => r.rows[0]),
+    upsertState: (userId, lastResetDate, currentStreak, longestStreak) =>
+      db.execute({
+        sql: `INSERT INTO checklist_state (user_id, last_reset_date, current_streak, longest_streak)
+              VALUES (?, ?, ?, ?)
+              ON CONFLICT(user_id) DO UPDATE SET last_reset_date = excluded.last_reset_date,
+                current_streak = excluded.current_streak, longest_streak = excluded.longest_streak`,
+        args: [userId, lastResetDate, currentStreak, longestStreak]
+      }),
+    getItems: (userId) =>
+      db.execute({
+        sql: 'SELECT * FROM checklist_items WHERE user_id = ? ORDER BY position ASC, id ASC',
+        args: [userId]
+      }).then(r => r.rows),
+    insertItem: (userId, text, position) =>
+      db.execute({
+        sql: 'INSERT INTO checklist_items (user_id, text, position) VALUES (?, ?, ?)',
+        args: [userId, text, position]
+      }).then(r => Number(r.lastInsertRowid)),
+    deleteItem: (userId, id) =>
+      db.execute({ sql: 'DELETE FROM checklist_items WHERE user_id = ? AND id = ?', args: [userId, id] }),
+    resetAllChecked: (userId) =>
+      db.execute({ sql: 'UPDATE checklist_items SET checked = 0 WHERE user_id = ?', args: [userId] }),
+    counts: (userId) =>
+      db.execute({
+        sql: 'SELECT COUNT(*) as total, COALESCE(SUM(checked), 0) as checkedCount FROM checklist_items WHERE user_id = ?',
+        args: [userId]
+      }).then(r => r.rows[0]),
+    maxPosition: (userId) =>
+      db.execute({
+        sql: 'SELECT COALESCE(MAX(position), -1) as maxPos FROM checklist_items WHERE user_id = ?',
+        args: [userId]
+      }).then(r => Number(r.rows[0].maxPos))
+  }
 };
+
+// ---------- checklist reset / streak logic ----------
+//
+// Check! keeps the same items from day to day, but their checkmarks clear
+// once per calendar day. The client tells us what day it thinks it is (its
+// own local date, so the reset lines up with the user's midnight rather
+// than the server's) and we roll the reset forward the next time they touch
+// the API, rather than relying on a cron job.
+
+function isValidLocalDate(s) {
+  return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
+}
+
+function todayUtcDateString() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function daysBetween(earlier, later) {
+  const a = Date.parse(earlier + 'T00:00:00Z');
+  const b = Date.parse(later + 'T00:00:00Z');
+  return Math.round((b - a) / 86400000);
+}
+
+async function ensureChecklistReset(userId, localDate) {
+  const today = isValidLocalDate(localDate) ? localDate : todayUtcDateString();
+  const state = await queries.checklist.getState(userId);
+
+  if (!state) {
+    await queries.checklist.upsertState(userId, today, 0, 0);
+    return { resetDate: today, streak: { current: 0, longest: 0 } };
+  }
+
+  if (state.last_reset_date === today) {
+    return { resetDate: today, streak: { current: state.current_streak, longest: state.longest_streak } };
+  }
+
+  // A new day has arrived since we last checked in. Before wiping today's
+  // checkmarks, decide whether the day we're leaving behind keeps or breaks
+  // the streak.
+  const counts = await queries.checklist.counts(userId);
+  const total = Number(counts.total) || 0;
+  const checkedCount = Number(counts.checkedCount) || 0;
+  const wasFullyCompleted = total > 0 && checkedCount === total;
+
+  let currentStreak = 0;
+  if (wasFullyCompleted) {
+    const gap = daysBetween(state.last_reset_date, today);
+    currentStreak = gap === 1 ? (state.current_streak || 0) + 1 : 1;
+  }
+  const longestStreak = Math.max(state.longest_streak || 0, currentStreak);
+
+  await queries.checklist.resetAllChecked(userId);
+  await queries.checklist.upsertState(userId, today, currentStreak, longestStreak);
+
+  return { resetDate: today, streak: { current: currentStreak, longest: longestStreak } };
+}
+
+function formatChecklistItem(row) {
+  return { id: row.id, text: row.text, checked: !!row.checked, position: row.position };
+}
 
 // ---------- app setup ----------
 
@@ -217,6 +330,77 @@ app.put('/api/goals', requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- checklist API (Check!) ----------
+
+app.get('/api/checklist', requireAuth, async (req, res) => {
+  const { resetDate, streak } = await ensureChecklistReset(req.session.userId, req.query.localDate);
+  const items = await queries.checklist.getItems(req.session.userId);
+  res.json({ items: items.map(formatChecklistItem), resetDate, streak });
+});
+
+app.post('/api/checklist/items', requireAuth, async (req, res) => {
+  const { text, localDate } = req.body || {};
+  if (typeof text !== 'string' || !text.trim()) {
+    return res.status(400).json({ error: 'Give this item some text.' });
+  }
+  const cleanText = text.trim().slice(0, 200);
+
+  await ensureChecklistReset(req.session.userId, localDate);
+
+  const counts = await queries.checklist.counts(req.session.userId);
+  if (Number(counts.total) >= 500) {
+    return res.status(413).json({ error: "That's a lot to check off! Clear out some old items first." });
+  }
+
+  const nextPosition = (await queries.checklist.maxPosition(req.session.userId)) + 1;
+  const id = await queries.checklist.insertItem(req.session.userId, cleanText, nextPosition);
+  res.json({ ok: true, item: { id, text: cleanText, checked: false, position: nextPosition } });
+});
+
+app.patch('/api/checklist/items/:id', requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'Invalid item.' });
+  const { checked, text, localDate } = req.body || {};
+
+  await ensureChecklistReset(req.session.userId, localDate);
+
+  const fields = [];
+  const args = [];
+  if (typeof checked === 'boolean') { fields.push('checked = ?'); args.push(checked ? 1 : 0); }
+  if (typeof text === 'string' && text.trim()) { fields.push('text = ?'); args.push(text.trim().slice(0, 200)); }
+  if (!fields.length) return res.status(400).json({ error: 'Nothing to update.' });
+
+  args.push(req.session.userId, id);
+  const result = await db.execute({
+    sql: `UPDATE checklist_items SET ${fields.join(', ')} WHERE user_id = ? AND id = ?`,
+    args
+  });
+  if (result.rowsAffected === 0) return res.status(404).json({ error: 'Item not found.' });
+  res.json({ ok: true });
+});
+
+app.delete('/api/checklist/items/:id', requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'Invalid item.' });
+  await queries.checklist.deleteItem(req.session.userId, id);
+  res.json({ ok: true });
+});
+
+app.put('/api/checklist/reorder', requireAuth, async (req, res) => {
+  const { order } = req.body || {};
+  if (!Array.isArray(order) || !order.length || order.some(id => !Number.isInteger(id))) {
+    return res.status(400).json({ error: 'Malformed order.' });
+  }
+  if (order.length > 500) return res.status(413).json({ error: 'Too many items to reorder at once.' });
+  for (let i = 0; i < order.length; i++) {
+    await db.execute({
+      sql: 'UPDATE checklist_items SET position = ? WHERE user_id = ? AND id = ?',
+      args: [i, req.session.userId, order[i]]
+    });
+  }
+  res.json({ ok: true });
+});
+
 // ---------- pages ----------
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -232,6 +416,17 @@ app.get('/app.html', (req, res) => {
     return res.redirect('/login.html');
   }
   res.sendFile(path.join(PUBLIC_DIR, 'app.html'));
+});
+
+app.get('/check', (req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, 'check', 'landing.html'));
+});
+
+app.get('/check/app.html', (req, res) => {
+  if (!req.session || !req.session.userId) {
+    return res.redirect('/check/login.html');
+  }
+  res.sendFile(path.join(PUBLIC_DIR, 'check', 'app.html'));
 });
 
 app.use(express.static(PUBLIC_DIR));
