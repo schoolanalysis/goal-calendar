@@ -34,7 +34,7 @@
   let settings = {
     theme: 'system',
     weekStart: 0,
-    sortMode: 'significance',
+    sortMode: 'category',
     showCategories: true,
     showSignificance: true,
     sidebarCollapsed: false,
@@ -111,6 +111,7 @@
   const gridViewport = document.getElementById('gridViewport');
   const weekdaysRow = document.getElementById('weekdaysRow');
   const categoryListEl = document.getElementById('categoryList');
+  const sidebar = document.getElementById('sidebar');
   const sidebarDayLabel = document.getElementById('sidebarDayLabel');
   const sidebarGoalList = document.getElementById('sidebarGoalList');
   const sidebarStarPicker = document.getElementById('sidebarStarPicker');
@@ -413,6 +414,23 @@
     return withIndex.map(x => x.g);
   }
 
+  // Buckets goals by category (ordered like the category list, unknown/
+  // deleted categories last), each bucket sub-sorted by significance —
+  // used by the "sort by category" view's headered grouping.
+  function groupGoalsByCategory(list) {
+    const order = [];
+    const byCategory = new Map();
+    list.forEach(g => {
+      if (!byCategory.has(g.category)) { byCategory.set(g.category, []); order.push(g.category); }
+      byCategory.get(g.category).push(g);
+    });
+    order.sort((a, b) => categoryRank(a) - categoryRank(b));
+    return order.map(catId => ({
+      category: findCategory(catId) || { id: catId, name: 'Uncategorized', color: '#9AA3B2' },
+      goals: byCategory.get(catId).slice().sort((a, b) => (b.stars || 0) - (a.stars || 0))
+    }));
+  }
+
   function moveGoal(fullList, goal, direction) {
     const idx = fullList.indexOf(goal);
     const swapIdx = idx + direction;
@@ -635,31 +653,67 @@
       : WEEKDAY_FULL[selectedDay.getDay()] + ', ' + MONTH_NAMES[selectedDay.getMonth()] + ' ' + selectedDay.getDate();
   }
 
-  function renderSidebarGoals() {
-    renderSidebarHead();
-    sidebarGoalList.innerHTML = '';
-    const k = keyForDate(selectedDay);
-    const fullList = data[k] || [];
-    const filteredList = categoryFilter ? fullList.filter(g => g.category === categoryFilter) : fullList;
-    const list = sortGoals(filteredList);
-    const canReorder = settings.sortMode === 'manual' && !categoryFilter;
+  // Renders a goal list into a container, either as a flat list (sorted by
+  // significance or in manual order) or, in "sort by category" mode,
+  // grouped under a header per category with each group sub-sorted by
+  // significance — shared by the sidebar and the day-preview window.
+  //   opts: { dotOnlyCategory, canReorder, onRefresh }
+  function renderGoalListInto(container, fullList, filteredList, opts) {
+    container.innerHTML = '';
 
-    if (!list.length) {
+    if (!filteredList.length) {
       const empty = document.createElement('div');
       empty.className = 'empty-state';
       empty.textContent = fullList.length ? 'No goals in this category for this day.' : 'No goals yet for this day.';
-      sidebarGoalList.appendChild(empty);
+      container.appendChild(empty);
       return;
     }
 
-    list.forEach((g, displayIdx) => {
-      sidebarGoalList.appendChild(buildGoalRowEl(g, fullList, {
-        dotOnlyCategory: false,
-        canReorder,
-        list,
-        displayIdx,
-        onRefresh: refreshAfterGoalChange
-      }));
+    if (settings.sortMode === 'category') {
+      groupGoalsByCategory(filteredList).forEach(group => {
+        const header = document.createElement('div');
+        header.className = 'goal-group-header';
+        const dot = document.createElement('span');
+        dot.className = 'category-dot';
+        dot.style.background = group.category.color;
+        dot.title = group.category.name;
+        header.appendChild(dot);
+        header.appendChild(document.createTextNode(group.category.name));
+        container.appendChild(header);
+
+        group.goals.forEach(g => {
+          container.appendChild(buildGoalRowEl(g, fullList, {
+            dotOnlyCategory: true,
+            canReorder: false,
+            onRefresh: opts.onRefresh
+          }));
+        });
+      });
+    } else {
+      const list = sortGoals(filteredList);
+      list.forEach((g, displayIdx) => {
+        container.appendChild(buildGoalRowEl(g, fullList, {
+          dotOnlyCategory: opts.dotOnlyCategory,
+          canReorder: opts.canReorder,
+          list,
+          displayIdx,
+          onRefresh: opts.onRefresh
+        }));
+      });
+    }
+  }
+
+  function renderSidebarGoals() {
+    renderSidebarHead();
+    const k = keyForDate(selectedDay);
+    const fullList = data[k] || [];
+    const filteredList = categoryFilter ? fullList.filter(g => g.category === categoryFilter) : fullList;
+    const canReorder = settings.sortMode === 'manual' && !categoryFilter;
+
+    renderGoalListInto(sidebarGoalList, fullList, filteredList, {
+      dotOnlyCategory: false,
+      canReorder,
+      onRefresh: refreshAfterGoalChange
     });
     focusOpenSubgoalInput(sidebarGoalList);
   }
@@ -686,31 +740,24 @@
     const isToday = sameDay(previewDay, today);
     dpDate.textContent = (isToday ? 'Today · ' : '') + WEEKDAY_FULL[previewDay.getDay()] + ', ' + MONTH_NAMES[previewDay.getMonth()] + ' ' + previewDay.getDate();
 
-    dpGoalList.innerHTML = '';
     const k = keyForDate(previewDay);
     const fullList = data[k] || [];
     const filteredList = categoryFilter ? fullList.filter(g => g.category === categoryFilter) : fullList;
-    const list = sortGoals(filteredList);
 
-    if (!list.length) {
-      const empty = document.createElement('div');
-      empty.className = 'empty-state';
-      empty.textContent = fullList.length ? 'No goals in this category for this day.' : 'No goals yet for this day.';
-      dpGoalList.appendChild(empty);
-    } else {
-      list.forEach(g => {
-        dpGoalList.appendChild(buildGoalRowEl(g, fullList, {
-          dotOnlyCategory: true,
-          canReorder: false,
-          onRefresh: refreshAfterGoalChange
-        }));
-      });
-    }
+    renderGoalListInto(dpGoalList, fullList, filteredList, {
+      dotOnlyCategory: true,
+      canReorder: false,
+      onRefresh: refreshAfterGoalChange
+    });
     focusOpenSubgoalInput(dpGoalList);
     renderDpCatPicker();
   }
 
+  let morphTimer = null;
+
   function openDayPreview(cellDate, cellEl) {
+    clearTimeout(morphTimer);
+    dayPreview.classList.remove('morphing');
     previewDay = cellDate;
     renderDayPreview();
 
@@ -736,12 +783,36 @@
   }
 
   function closeDayPreview() {
-    dayPreview.classList.remove('open');
+    clearTimeout(morphTimer);
+    dayPreview.classList.remove('open', 'morphing');
     openSubgoalFormFor = null;
   }
 
   dpCloseBtn.addEventListener('click', closeDayPreview);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDayPreview(); });
+
+  // Animates the day-preview window sliding over onto the sidebar's own
+  // position/size, fading as it lands, so it visually "becomes" the
+  // sidebar rather than just closing. The real sidebar content underneath
+  // is updated immediately, so it's already correct once the traveling
+  // window fades away and reveals it.
+  function morphDayPreviewIntoSidebar() {
+    const targetRect = sidebar.getBoundingClientRect();
+
+    dayPreview.classList.add('morphing');
+    dayPreview.style.top = targetRect.top + 'px';
+    dayPreview.style.left = targetRect.left + 'px';
+    dayPreview.style.width = targetRect.width + 'px';
+    dayPreview.style.height = targetRect.height + 'px';
+    dayPreview.style.opacity = '0';
+
+    openSubgoalFormFor = null;
+    clearTimeout(morphTimer);
+    morphTimer = setTimeout(() => {
+      dayPreview.classList.remove('open', 'morphing');
+      dayPreview.removeAttribute('style');
+    }, 340);
+  }
 
   // The one moment the sidebar is allowed to jump to a different day: the
   // user explicitly asked to, via "See goals", closing the preview.
@@ -752,9 +823,9 @@
       viewYear = selectedDay.getFullYear();
       viewMonth = selectedDay.getMonth();
     }
-    closeDayPreview();
     renderCalendar();
     renderSidebarGoals();
+    morphDayPreviewIntoSidebar();
   });
 
   dpAddForm.addEventListener('submit', (e) => {
@@ -892,6 +963,7 @@
             const dot = document.createElement('span');
             dot.className = 'pv-dot';
             dot.style.background = cat.color;
+            dot.title = cat.name;
             span.appendChild(dot);
           }
           span.appendChild(document.createTextNode(g.text));
@@ -917,6 +989,7 @@
             const dot = document.createElement('span');
             dot.className = 'day-dot';
             dot.style.background = cat.color;
+            dot.title = cat.name;
             dots.appendChild(dot);
           });
           if (dots.childNodes.length) footer.appendChild(dots);

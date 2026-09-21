@@ -770,6 +770,27 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
   .feature-grid { grid-template-columns: 1fr; }
 }
 
+.about-section {
+  max-width: 720px;
+  margin: 0 auto 12vh;
+  padding: 0 24px;
+}
+
+.about-section h2 {
+  font-family: 'Sora', sans-serif;
+  font-weight: 700;
+  font-size: clamp(24px, 4vw, 32px);
+  margin: 0 0 14px;
+  letter-spacing: -0.01em;
+}
+
+.about-section p {
+  color: var(--ink-soft);
+  font-size: 15.5px;
+  line-height: 1.7;
+  white-space: pre-line;
+}
+
 /* ---- app shell ---- */
 
 .app-shell {
@@ -797,13 +818,12 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
 
 .sidebar.is-collapsed { margin-left: -300px; }
 
-/* a handle that stays outside the sidebar, straddling its edge, so it
-   stays put and reachable even once the sidebar has slid off screen */
+/* a handle that stays fully outside the sidebar — clear of its edge when
+   expanded, and never clipped by the viewport edge once collapsed */
 .sidebar-toggle-handle {
   position: fixed;
   top: 28px;
-  left: 300px;
-  transform: translateX(-50%);
+  left: 308px;
   z-index: 50;
   width: 26px;
   height: 26px;
@@ -820,9 +840,9 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
   transition: left 0.3s ease, transform 0.1s cubic-bezier(.4,0,.2,1);
 }
 .sidebar-toggle-handle:hover { border-color: var(--primary); color: var(--ink); }
-.sidebar-toggle-handle:active { transform: translateX(-50%) scale(0.88); }
+.sidebar-toggle-handle:active { transform: scale(0.88); }
 .sidebar-toggle-handle svg { width: 14px; height: 14px; transition: transform 0.3s ease; }
-.sidebar-toggle-handle.is-collapsed { left: 0; }
+.sidebar-toggle-handle.is-collapsed { left: 10px; }
 .sidebar-toggle-handle.is-collapsed svg { transform: rotate(180deg); }
 
 .main-col {
@@ -1077,6 +1097,20 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
   gap: 8px;
   margin-bottom: 12px;
 }
+
+.goal-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+  margin: 10px 0 -1px;
+}
+.goal-group-header:first-child { margin-top: 0; }
+.goal-group-header .category-dot { width: 7px; height: 7px; }
 
 .sidebar-goal-row {
   display: flex;
@@ -1595,10 +1629,22 @@ h1.month-title {
   pointer-events: none;
   transition: top 0.3s cubic-bezier(.22,.8,.28,1), left 0.3s cubic-bezier(.22,.8,.28,1),
               width 0.3s cubic-bezier(.22,.8,.28,1), height 0.3s cubic-bezier(.22,.8,.28,1),
-              opacity 0.2s ease;
+              opacity 0.2s ease, border-radius 0.3s ease;
 }
 
 .day-preview.open { opacity: 1; pointer-events: auto; }
+
+/* "See goals" morph: the window slides/resizes onto the sidebar's own
+   rect and fades as it lands, so it reads as becoming the sidebar rather
+   than just closing. Slower, evenly-paced motion suits that better than
+   the snappier open/close transition above. */
+.day-preview.morphing {
+  border-radius: 0px;
+  transition: top 0.34s cubic-bezier(.4,0,.2,1), left 0.34s cubic-bezier(.4,0,.2,1),
+              width 0.34s cubic-bezier(.4,0,.2,1), height 0.34s cubic-bezier(.4,0,.2,1),
+              opacity 0.34s ease, border-radius 0.34s ease;
+  pointer-events: none;
+}
 
 .dp-head {
   flex: none;
