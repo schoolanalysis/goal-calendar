@@ -39,7 +39,8 @@
     showSignificance: true,
     sidebarCollapsed: false,
     subgoalsEnabled: true,
-    subgoalsAutoComplete: false
+    subgoalsAutoComplete: false,
+    dayPreviewEnabled: true
   };
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
@@ -107,13 +108,13 @@
   const monthLabel = document.getElementById('monthLabel');
   const yearLabel = document.getElementById('yearLabel');
   const grid = document.getElementById('grid');
+  const gridViewport = document.getElementById('gridViewport');
   const weekdaysRow = document.getElementById('weekdaysRow');
   const categoryListEl = document.getElementById('categoryList');
   const sidebarDayLabel = document.getElementById('sidebarDayLabel');
   const sidebarGoalList = document.getElementById('sidebarGoalList');
   const sidebarStarPicker = document.getElementById('sidebarStarPicker');
   const sidebarAddInput = document.getElementById('sidebarAddInput');
-  const dayPreviewOverlay = document.getElementById('dayPreviewOverlay');
   const dayPreview = document.getElementById('dayPreview');
   const dpDate = document.getElementById('dpDate');
   const dpCloseBtn = document.getElementById('dpCloseBtn');
@@ -663,16 +664,21 @@
     focusOpenSubgoalInput(sidebarGoalList);
   }
 
-  // ---------- day-preview overlay (click a day → medium window on top of it) ----------
-  function restingPreviewRect() {
-    const width = Math.min(440, window.innerWidth * 0.92);
-    const height = Math.min(560, window.innerHeight * 0.78);
-    return {
-      top: (window.innerHeight - height) / 2,
-      left: (window.innerWidth - width) / 2,
-      width,
-      height
-    };
+  // ---------- day-preview overlay (click a day → compact window anchored over it) ----------
+  // Not a modal — there's no dimming overlay, so it sits centered on the
+  // clicked cell (clamped to stay fully on-screen) while the rest of the
+  // app stays usable underneath it.
+  function anchoredPreviewRect(cellRect) {
+    const width = Math.min(300, window.innerWidth - 24);
+    const height = Math.min(380, window.innerHeight - 24);
+    const margin = 12;
+    const cellCenterX = cellRect.left + cellRect.width / 2;
+    const cellCenterY = cellRect.top + cellRect.height / 2;
+    let left = cellCenterX - width / 2;
+    let top = cellCenterY - height / 2;
+    left = Math.max(margin, Math.min(left, window.innerWidth - width - margin));
+    top = Math.max(margin, Math.min(top, window.innerHeight - height - margin));
+    return { top, left, width, height };
   }
 
   function renderDayPreview() {
@@ -715,7 +721,6 @@
     dayPreview.style.width = startRect.width + 'px';
     dayPreview.style.height = startRect.height + 'px';
     dayPreview.classList.add('open');
-    dayPreviewOverlay.classList.add('open');
 
     // Force layout so the browser registers the starting rect before we
     // animate to the resting size — otherwise the two states collapse into
@@ -723,7 +728,7 @@
     void dayPreview.offsetWidth;
 
     dayPreview.style.transition = '';
-    const rest = restingPreviewRect();
+    const rest = anchoredPreviewRect(startRect);
     dayPreview.style.top = rest.top + 'px';
     dayPreview.style.left = rest.left + 'px';
     dayPreview.style.width = rest.width + 'px';
@@ -732,12 +737,10 @@
 
   function closeDayPreview() {
     dayPreview.classList.remove('open');
-    dayPreviewOverlay.classList.remove('open');
     openSubgoalFormFor = null;
   }
 
   dpCloseBtn.addEventListener('click', closeDayPreview);
-  dayPreviewOverlay.addEventListener('click', closeDayPreview);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDayPreview(); });
 
   // The one moment the sidebar is allowed to jump to a different day: the
@@ -923,22 +926,55 @@
       }
 
       cell.addEventListener('click', () => {
+        if (!settings.dayPreviewEnabled) {
+          selectedDay = cellDate;
+          renderCalendar();
+          renderSidebarGoals();
+          return;
+        }
+        // Clicking the day already open in the preview toggles it closed.
+        if (dayPreview.classList.contains('open') && previewDay && sameDay(previewDay, cellDate)) {
+          closeDayPreview();
+          return;
+        }
         openDayPreview(cellDate, cell);
       });
       grid.appendChild(cell);
     }
   }
 
-  document.getElementById('prevBtn').addEventListener('click', () => {
-    viewMonth--;
+  // Slides the grid to the next/previous month instead of an instant swap —
+  // only used for the explicit prev/next arrows, not other re-renders.
+  function navigateMonth(direction) {
+    const oldClone = grid.cloneNode(true);
+    oldClone.removeAttribute('id');
+    oldClone.classList.add('grid-slide-clone');
+    gridViewport.appendChild(oldClone);
+
+    viewMonth += direction;
     if (viewMonth < 0) { viewMonth = 11; viewYear--; }
-    renderCalendar();
-  });
-  document.getElementById('nextBtn').addEventListener('click', () => {
-    viewMonth++;
     if (viewMonth > 11) { viewMonth = 0; viewYear++; }
     renderCalendar();
-  });
+
+    const distance = 46;
+    grid.style.transition = 'none';
+    grid.style.transform = 'translateX(' + (direction > 0 ? distance : -distance) + 'px)';
+    grid.style.opacity = '0';
+    void grid.offsetWidth;
+    grid.style.transition = '';
+
+    requestAnimationFrame(() => {
+      grid.style.transform = 'translateX(0)';
+      grid.style.opacity = '1';
+      oldClone.style.transform = 'translateX(' + (direction > 0 ? -distance : distance) + 'px)';
+      oldClone.style.opacity = '0';
+    });
+
+    setTimeout(() => oldClone.remove(), 340);
+  }
+
+  document.getElementById('prevBtn').addEventListener('click', () => navigateMonth(-1));
+  document.getElementById('nextBtn').addEventListener('click', () => navigateMonth(1));
   document.getElementById('todayBtn').addEventListener('click', () => {
     viewYear = today.getFullYear();
     viewMonth = today.getMonth();
@@ -983,6 +1019,9 @@
     });
     document.querySelectorAll('#subgoalsAutoCompleteOptions .option-btn').forEach(btn => {
       btn.classList.toggle('active', (btn.dataset.boolValue === 'true') === settings.subgoalsAutoComplete);
+    });
+    document.querySelectorAll('#dayPreviewEnabledOptions .option-btn').forEach(btn => {
+      btn.classList.toggle('active', (btn.dataset.boolValue === 'true') === settings.dayPreviewEnabled);
     });
   }
 
@@ -1071,6 +1110,14 @@
       settings.subgoalsAutoComplete = btn.dataset.boolValue === 'true';
       saveSettings();
       renderSettingUI();
+    });
+  });
+  document.querySelectorAll('#dayPreviewEnabledOptions .option-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      settings.dayPreviewEnabled = btn.dataset.boolValue === 'true';
+      saveSettings();
+      renderSettingUI();
+      if (!settings.dayPreviewEnabled) closeDayPreview();
     });
   });
 

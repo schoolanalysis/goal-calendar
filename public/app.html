@@ -98,17 +98,21 @@
     <div class="weekdays" id="weekdaysRow" style="display:none;">
       <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
     </div>
-    <div class="grid" id="grid"></div>
+    <div class="grid-viewport" id="gridViewport">
+      <div class="grid" id="grid"></div>
+    </div>
 
     <p class="footnote">Your goals are private to your account and saved on the server.</p>
   </div>
 </div>
 
-<div class="drawer-overlay" id="dayPreviewOverlay"></div>
 <div class="day-preview" id="dayPreview">
   <div class="dp-head">
     <span class="dp-date" id="dpDate">Today</span>
-    <button class="icon-btn" id="dpCloseBtn" aria-label="Close">&#10005;</button>
+    <div class="dp-head-actions">
+      <button type="button" class="dp-see-goals-link" id="dpSeeGoalsBtn">See goals</button>
+      <button class="icon-btn" id="dpCloseBtn" aria-label="Close">&#10005;</button>
+    </div>
   </div>
   <div class="dp-goal-list" id="dpGoalList"></div>
   <form class="dp-add-form" id="dpAddForm">
@@ -123,7 +127,6 @@
     </div>
     <button class="add-btn" type="submit">Add goal</button>
   </form>
-  <button type="button" class="dp-see-goals" id="dpSeeGoalsBtn">See goals in sidebar &#8594;</button>
 </div>
 
 <div class="drawer-overlay" id="drawerOverlay"></div>
@@ -169,6 +172,15 @@
         <button class="option-btn" data-bool-value="true">On</button>
         <button class="option-btn" data-bool-value="false">Off</button>
       </div>
+    </div>
+    <div>
+      <div class="setting-group-title">Calendar</div>
+      <div class="option-row" id="dayPreviewEnabledOptions">
+        <span class="toggle-row-label">Day-preview window</span>
+        <button class="option-btn" data-bool-value="true">On</button>
+        <button class="option-btn" data-bool-value="false">Off</button>
+      </div>
+      <p class="drawer-footnote" style="margin-top:8px;">When off, clicking a day jumps straight to it in the sidebar instead of opening a preview window.</p>
     </div>
     <div>
       <div class="setting-group-title">Subgoals</div>
