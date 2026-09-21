@@ -104,6 +104,28 @@
   </div>
 </div>
 
+<div class="drawer-overlay" id="dayPreviewOverlay"></div>
+<div class="day-preview" id="dayPreview">
+  <div class="dp-head">
+    <span class="dp-date" id="dpDate">Today</span>
+    <button class="icon-btn" id="dpCloseBtn" aria-label="Close">&#10005;</button>
+  </div>
+  <div class="dp-goal-list" id="dpGoalList"></div>
+  <form class="dp-add-form" id="dpAddForm">
+    <input class="add-input" id="dpAddInput" type="text" placeholder="Add a goal for this day" maxlength="200">
+    <div class="dot-cat-picker" id="dpCatPicker"></div>
+    <div class="star-picker" id="dpStarPicker" data-value="0">
+      <button type="button" data-star="1">&#9733;</button>
+      <button type="button" data-star="2">&#9733;</button>
+      <button type="button" data-star="3">&#9733;</button>
+      <button type="button" data-star="4">&#9733;</button>
+      <button type="button" data-star="5">&#9733;</button>
+    </div>
+    <button class="add-btn" type="submit">Add goal</button>
+  </form>
+  <button type="button" class="dp-see-goals" id="dpSeeGoalsBtn">See goals in sidebar &#8594;</button>
+</div>
+
 <div class="drawer-overlay" id="drawerOverlay"></div>
 <div class="settings-drawer" id="settingsDrawer">
   <div class="drawer-head">
@@ -147,6 +169,20 @@
         <button class="option-btn" data-bool-value="true">On</button>
         <button class="option-btn" data-bool-value="false">Off</button>
       </div>
+    </div>
+    <div>
+      <div class="setting-group-title">Subgoals</div>
+      <div class="option-row" id="subgoalsEnabledOptions">
+        <span class="toggle-row-label">Enable subgoals</span>
+        <button class="option-btn" data-bool-value="true">On</button>
+        <button class="option-btn" data-bool-value="false">Off</button>
+      </div>
+      <div class="option-row" id="subgoalsAutoCompleteOptions" style="margin-top:8px;">
+        <span class="toggle-row-label">Auto-complete</span>
+        <button class="option-btn" data-bool-value="true">On</button>
+        <button class="option-btn" data-bool-value="false">Off</button>
+      </div>
+      <p class="drawer-footnote" style="margin-top:8px;">When on, finishing every subgoal automatically checks off the goal itself.</p>
     </div>
     <div>
       <div class="setting-group-title">Categories</div>
