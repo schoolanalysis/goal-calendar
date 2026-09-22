@@ -68,6 +68,9 @@
   let categoryFilter = null; // null = show all
   let starPickerValue = 0;
   let selectedCategoryId = null;
+  let selectedSubcategoryId = null;
+  let subcategoryFormFor = null; // category id whose inline "add subcategory" form is open, or null
+  let subMenuTimer = null;
   let previewDay = null; // date currently shown in the day-preview overlay, or null when closed
   let openSubgoalFormFor = null; // goal id whose inline "add subgoal" form is open, or null
   let justCompletedId = null; // goal/subgoal id to play a completion "pop" on, for one render pass
@@ -128,6 +131,12 @@
   const dpCatPicker = document.getElementById('dpCatPicker');
   const dpStarPicker = document.getElementById('dpStarPicker');
   const dpSeeGoalsBtn = document.getElementById('dpSeeGoalsBtn');
+  const allGoalsBtn = document.getElementById('allGoalsBtn');
+  const allGoalsOverlay = document.getElementById('allGoalsOverlay');
+  const allGoalsModal = document.getElementById('allGoalsModal');
+  const allGoalsCloseBtn = document.getElementById('allGoalsCloseBtn');
+  const allGoalsCount = document.getElementById('allGoalsCount');
+  const allGoalsBody = document.getElementById('allGoalsBody');
 
   // ---------- category sidebar list (compact chips) ----------
   function setChipColors(el, color, active) {
@@ -151,7 +160,7 @@
     allChip.innerHTML = '<span class="category-dot" style="background:currentColor"></span><span>All</span>';
     setChipColors(allChip, 'var(--primary)', categoryFilter === null);
     if (categoryFilter === null) { allChip.style.background = 'var(--primary)'; allChip.style.borderColor = 'var(--primary)'; }
-    allChip.addEventListener('click', () => { categoryFilter = null; renderCategoryList(); renderSidebarGoals(); renderDayPreview(); renderCalendar(); });
+    allChip.addEventListener('click', () => { categoryFilter = null; renderCategoryList(); renderSidebarGoals(); renderDayPreview(); renderAllGoalsModal(); renderCalendar(); });
     categoryListEl.appendChild(allChip);
 
     filterableCategories().forEach(cat => {
@@ -168,9 +177,25 @@
         renderCategoryList();
         renderSidebarGoals();
         renderDayPreview();
+        renderAllGoalsModal();
         renderCalendar();
       });
       wrap.appendChild(btn);
+
+      const addSub = document.createElement('button');
+      addSub.type = 'button';
+      addSub.className = 'chip-add-sub';
+      addSub.setAttribute('aria-label', 'Add subcategory to ' + cat.name);
+      addSub.title = 'Add subcategory';
+      addSub.innerHTML = '&#43;';
+      addSub.addEventListener('click', (e) => {
+        e.stopPropagation();
+        subcategoryFormFor = (subcategoryFormFor === cat.id) ? null : cat.id;
+        if (subcategoryFormFor) document.getElementById('categoryAddForm').hidden = true;
+        renderCategoryList();
+        if (subcategoryFormFor) document.getElementById('subcategoryAddInput').focus();
+      });
+      wrap.appendChild(addSub);
 
       const remove = document.createElement('button');
       remove.type = 'button';
@@ -181,10 +206,12 @@
         e.stopPropagation();
         categories = categories.filter(c => c.id !== cat.id);
         if (categoryFilter === cat.id) categoryFilter = null;
+        if (subcategoryFormFor === cat.id) subcategoryFormFor = null;
         scheduleSave();
         renderCategoryList();
         renderSidebarGoals();
         renderDayPreview();
+        renderAllGoalsModal();
         renderCalendar();
         renderCategoryDropdown();
       });
@@ -200,9 +227,29 @@
     addChip.addEventListener('click', () => {
       const form = document.getElementById('categoryAddForm');
       form.hidden = !form.hidden;
-      if (!form.hidden) document.getElementById('categoryAddInput').focus();
+      if (!form.hidden) {
+        subcategoryFormFor = null;
+        syncSubcategoryForm();
+        document.getElementById('categoryAddInput').focus();
+      }
     });
     categoryListEl.appendChild(addChip);
+
+    syncSubcategoryForm();
+  }
+
+  // Keeps the static "add subcategory" form's visibility/label in sync
+  // with subcategoryFormFor, closing it if its category got deleted.
+  function syncSubcategoryForm() {
+    const form = document.getElementById('subcategoryAddForm');
+    if (subcategoryFormFor && !categories.some(c => c.id === subcategoryFormFor)) {
+      subcategoryFormFor = null;
+    }
+    form.hidden = !subcategoryFormFor;
+    if (subcategoryFormFor) {
+      const cat = categories.find(c => c.id === subcategoryFormFor);
+      document.getElementById('subcategoryAddLabel').textContent = 'New subcategory for ' + (cat ? cat.name : '');
+    }
   }
 
   // ---------- custom category creation ----------
@@ -255,6 +302,7 @@
     renderCategoryList();
     renderCategoryDropdown();
     renderDayPreview();
+    renderAllGoalsModal();
   });
 
   document.getElementById('categoryAddCancel').addEventListener('click', () => {
@@ -262,36 +310,131 @@
     categoryAddInput.value = '';
   });
 
+  document.getElementById('subcategoryAddForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const input = document.getElementById('subcategoryAddInput');
+    const name = input.value.trim();
+    const cat = subcategoryFormFor && categories.find(c => c.id === subcategoryFormFor);
+    if (!name || !cat) return;
+    if (!cat.subcategories) cat.subcategories = [];
+    cat.subcategories.push({ id: 'sub_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), name });
+    scheduleSave();
+    input.value = '';
+    subcategoryFormFor = null;
+    renderCategoryList();
+    renderCategoryDropdown();
+  });
+
+  document.getElementById('subcategoryAddCancel').addEventListener('click', () => {
+    subcategoryFormFor = null;
+    document.getElementById('subcategoryAddInput').value = '';
+    renderCategoryList();
+  });
+
   // ---------- custom category dropdown (add-goal form) ----------
   const cdTrigger = document.getElementById('cdTrigger');
   const cdMenu = document.getElementById('cdMenu');
+  const cdSubMenu = document.getElementById('cdSubMenu');
   const cdDot = document.getElementById('cdDot');
   const cdLabel = document.getElementById('cdLabel');
 
-  function setSelectedCategory(id) {
+  function subcategoryName(cat, subId) {
+    const sub = cat && cat.subcategories && cat.subcategories.find(s => s.id === subId);
+    return sub ? sub.name : '';
+  }
+
+  function setSelectedCategory(id, subId) {
     const cat = findCategory(id) || allCategories()[0];
     selectedCategoryId = cat.id;
+    selectedSubcategoryId = subId || null;
     cdDot.style.background = cat.color;
-    cdLabel.textContent = cat.name;
+    cdLabel.textContent = cat.name + (selectedSubcategoryId ? ' — ' + subcategoryName(cat, selectedSubcategoryId) : '');
+  }
+
+  function closeSubMenu() {
+    clearTimeout(subMenuTimer);
+    cdSubMenu.hidden = true;
+  }
+
+  // Ported onto <body> so it always paints above everything else,
+  // regardless of any stacking context formed by its original ancestors
+  // (a plain deep z-index bumped into exactly that here) — the standard
+  // fix used by dropdown/flyout libraries for floating UI.
+  document.body.appendChild(cdSubMenu);
+
+  function openSubMenu(cat, optionEl) {
+    cdSubMenu.innerHTML = '';
+    cat.subcategories.forEach(sub => {
+      const subOpt = document.createElement('button');
+      subOpt.type = 'button';
+      subOpt.className = 'cd-suboption';
+      subOpt.textContent = sub.name;
+      subOpt.addEventListener('click', () => {
+        setSelectedCategory(cat.id, sub.id);
+        closeCategoryDropdown();
+      });
+      cdSubMenu.appendChild(subOpt);
+    });
+
+    // Fixed/viewport-positioned rather than anchored via CSS: the sidebar
+    // (and so the dropdown) sits flush against the left edge of the
+    // screen, so "to the left" has to flip to the right when there's no
+    // room, and clamp on both axes, or it renders off-screen entirely.
+    cdSubMenu.hidden = false;
+    cdSubMenu.style.left = '-9999px';
+    cdSubMenu.style.top = '0px';
+
+    const menuRect = cdMenu.getBoundingClientRect();
+    const optionRect = optionEl.getBoundingClientRect();
+    const subMenuWidth = cdSubMenu.offsetWidth;
+    const subMenuHeight = cdSubMenu.offsetHeight;
+    const margin = 8;
+
+    const roomToLeft = menuRect.left - margin;
+    const left = roomToLeft >= subMenuWidth ? (menuRect.left - subMenuWidth - margin) : (menuRect.right + margin);
+    const clampedLeft = Math.max(margin, Math.min(left, window.innerWidth - subMenuWidth - margin));
+    const clampedTop = Math.max(margin, Math.min(optionRect.top, window.innerHeight - subMenuHeight - margin));
+
+    cdSubMenu.style.left = clampedLeft + 'px';
+    cdSubMenu.style.top = clampedTop + 'px';
   }
 
   function renderCategoryDropdown() {
     cdMenu.innerHTML = '';
     allCategories().forEach(cat => {
+      const hasSubs = !!(cat.subcategories && cat.subcategories.length);
       const opt = document.createElement('button');
       opt.type = 'button';
       opt.className = 'cd-option';
       opt.setAttribute('role', 'option');
-      opt.innerHTML = '<span class="category-dot" style="background:' + cat.color + '"></span><span>' + cat.name + '</span>';
+      opt.innerHTML =
+        (hasSubs
+          ? '<svg class="cd-sub-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>'
+          : '<span class="cd-sub-arrow-spacer"></span>') +
+        '<span class="category-dot" style="background:' + cat.color + '"></span>' +
+        '<span class="cd-option-label">' + cat.name + '</span>';
       opt.addEventListener('click', () => {
-        setSelectedCategory(cat.id);
+        setSelectedCategory(cat.id, null);
         closeCategoryDropdown();
       });
+      if (hasSubs) {
+        opt.addEventListener('mouseenter', () => {
+          clearTimeout(subMenuTimer);
+          subMenuTimer = setTimeout(() => openSubMenu(cat, opt), 1000);
+        });
+        opt.addEventListener('mouseleave', () => {
+          clearTimeout(subMenuTimer);
+          subMenuTimer = setTimeout(() => {
+            if (!cdSubMenu.matches(':hover')) closeSubMenu();
+          }, 200);
+        });
+      }
       cdMenu.appendChild(opt);
     });
     if (!selectedCategoryId || !allCategories().some(c => c.id === selectedCategoryId)) {
-      setSelectedCategory(allCategories()[0].id);
+      setSelectedCategory(allCategories()[0].id, null);
     }
+    closeSubMenu();
   }
 
   function openCategoryDropdown() {
@@ -301,6 +444,7 @@
   function closeCategoryDropdown() {
     cdMenu.hidden = true;
     cdTrigger.setAttribute('aria-expanded', 'false');
+    closeSubMenu();
   }
   cdTrigger.addEventListener('click', () => {
     if (cdMenu.hidden) openCategoryDropdown(); else closeCategoryDropdown();
@@ -311,6 +455,7 @@
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeCategoryDropdown();
   });
+  cdSubMenu.addEventListener('mouseleave', closeSubMenu);
 
   sidebarStarPicker.querySelectorAll('button').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -434,6 +579,32 @@
     }));
   }
 
+  // Splits one category's goals into its named subcategory groups (in the
+  // category's own subcategory order) plus a "general" bucket for goals
+  // with no subcategory (or one that no longer exists) — general goals
+  // render last, same convention as "Any" sorting last at the top level.
+  function groupGoalsBySubcategory(goalsInCategory, cat) {
+    const subDefs = (cat && cat.subcategories) || [];
+    if (!subDefs.length) {
+      return { general: goalsInCategory.slice().sort((a, b) => (b.stars || 0) - (a.stars || 0)), subGroups: [] };
+    }
+    const bySub = new Map();
+    const general = [];
+    goalsInCategory.forEach(g => {
+      if (g.subcategory && subDefs.some(s => s.id === g.subcategory)) {
+        if (!bySub.has(g.subcategory)) bySub.set(g.subcategory, []);
+        bySub.get(g.subcategory).push(g);
+      } else {
+        general.push(g);
+      }
+    });
+    const subGroups = subDefs
+      .filter(s => bySub.has(s.id))
+      .map(s => ({ subcategory: s, goals: bySub.get(s.id).slice().sort((a, b) => (b.stars || 0) - (a.stars || 0)) }));
+    general.sort((a, b) => (b.stars || 0) - (a.stars || 0));
+    return { general, subGroups };
+  }
+
   function moveGoal(fullList, goal, direction) {
     const idx = fullList.indexOf(goal);
     const swapIdx = idx + direction;
@@ -451,6 +622,7 @@
   function refreshAfterGoalChange() {
     renderSidebarGoals();
     renderDayPreview();
+    renderAllGoalsModal();
     renderCalendar();
     justCompletedId = null;
   }
@@ -709,13 +881,23 @@
           container.appendChild(header);
         }
 
-        group.goals.forEach(g => {
-          container.appendChild(buildGoalRowEl(g, fullList, {
-            dotOnlyCategory: true,
-            canReorder: false,
-            onRefresh: opts.onRefresh
-          }));
+        const appendGoalRow = g => container.appendChild(buildGoalRowEl(g, fullList, {
+          dotOnlyCategory: true,
+          canReorder: false,
+          onRefresh: opts.onRefresh
+        }));
+
+        const { general, subGroups } = groupGoalsBySubcategory(group.goals, group.category);
+        subGroups.forEach(sg => {
+          if (opts.showCategoryHeaders) {
+            const subHeader = document.createElement('div');
+            subHeader.className = 'goal-subgroup-header';
+            subHeader.textContent = sg.subcategory.name;
+            container.appendChild(subHeader);
+          }
+          sg.goals.forEach(appendGoalRow);
         });
+        general.forEach(appendGoalRow);
       });
     } else {
       const list = sortGoals(filteredList);
@@ -746,6 +928,84 @@
     });
     focusOpenSubgoalInput(sidebarGoalList);
   }
+
+  // ---------- "All goals" modal (every day, at once) ----------
+  let allGoalsModalOpen = false;
+
+  function dateFromKey(k) {
+    const parts = k.split('-').map(Number);
+    return new Date(parts[0], parts[1] - 1, parts[2]);
+  }
+
+  function renderAllGoalsModal() {
+    if (!allGoalsModalOpen) return;
+    allGoalsBody.innerHTML = '';
+
+    const dateKeys = Object.keys(data)
+      .filter(k => k !== '__categories' && Array.isArray(data[k]) && data[k].length)
+      .sort();
+
+    let total = 0;
+    dateKeys.forEach(k => {
+      const fullList = data[k];
+      const filteredList = categoryFilter ? fullList.filter(g => g.category === categoryFilter) : fullList;
+      if (!filteredList.length) return;
+      total += filteredList.length;
+
+      const dateObj = dateFromKey(k);
+      const header = document.createElement('button');
+      header.type = 'button';
+      header.className = 'all-goals-date-header';
+      header.textContent = (sameDay(dateObj, today) ? 'Today · ' : '') +
+        WEEKDAY_FULL[dateObj.getDay()] + ', ' + MONTH_NAMES[dateObj.getMonth()] + ' ' + dateObj.getDate() + ', ' + dateObj.getFullYear();
+      header.addEventListener('click', () => {
+        selectedDay = dateObj;
+        viewYear = dateObj.getFullYear();
+        viewMonth = dateObj.getMonth();
+        closeAllGoalsModal();
+        renderCalendar();
+        renderSidebarGoals();
+      });
+      allGoalsBody.appendChild(header);
+
+      const dateGroup = document.createElement('div');
+      dateGroup.className = 'all-goals-date-group';
+      renderGoalListInto(dateGroup, fullList, filteredList, {
+        dotOnlyCategory: true,
+        canReorder: false,
+        showCategoryHeaders: true,
+        onRefresh: refreshAfterGoalChange
+      });
+      allGoalsBody.appendChild(dateGroup);
+    });
+
+    allGoalsCount.textContent = total + (total === 1 ? ' goal total' : ' goals total');
+
+    if (!total) {
+      const empty = document.createElement('div');
+      empty.className = 'empty-state';
+      empty.textContent = 'No goals yet.';
+      allGoalsBody.appendChild(empty);
+    }
+  }
+
+  function openAllGoalsModal() {
+    allGoalsModalOpen = true;
+    renderAllGoalsModal();
+    allGoalsModal.classList.add('open');
+    allGoalsOverlay.classList.add('open');
+  }
+
+  function closeAllGoalsModal() {
+    allGoalsModalOpen = false;
+    allGoalsModal.classList.remove('open');
+    allGoalsOverlay.classList.remove('open');
+  }
+
+  allGoalsBtn.addEventListener('click', openAllGoalsModal);
+  allGoalsCloseBtn.addEventListener('click', closeAllGoalsModal);
+  allGoalsOverlay.addEventListener('click', closeAllGoalsModal);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAllGoalsModal(); });
 
   // ---------- day-preview overlay (click a day → compact window anchored over it) ----------
   // Not a modal — there's no dimming overlay, so it sits centered on the
@@ -888,6 +1148,7 @@
     openSubgoalFormFor = null;
     renderSidebarGoals();
     renderDayPreview();
+    renderAllGoalsModal();
   });
 
   function addGoalToSelectedDay() {
@@ -900,6 +1161,7 @@
       text: text,
       done: false,
       category: selectedCategoryId || allCategories()[0].id,
+      subcategory: selectedSubcategoryId || null,
       stars: starPickerValue
     });
     scheduleSave();
@@ -907,6 +1169,7 @@
     starPickerValue = 0;
     renderStarPicker();
     renderSidebarGoals();
+    renderAllGoalsModal();
     renderCalendar();
   }
 
@@ -1194,6 +1457,8 @@
       saveSettings();
       renderSettingUI();
       renderSidebarGoals();
+      renderDayPreview();
+      renderAllGoalsModal();
       renderCalendar();
     });
   });
@@ -1206,6 +1471,7 @@
       renderCategoryList();
       renderSidebarGoals();
       renderDayPreview();
+      renderAllGoalsModal();
     });
   });
   document.querySelectorAll('#showSignificanceOptions .option-btn').forEach(btn => {
@@ -1216,6 +1482,7 @@
       applyVisibilitySettings();
       renderSidebarGoals();
       renderDayPreview();
+      renderAllGoalsModal();
     });
   });
   document.querySelectorAll('#subgoalsEnabledOptions .option-btn').forEach(btn => {
@@ -1225,6 +1492,7 @@
       renderSettingUI();
       renderSidebarGoals();
       renderDayPreview();
+      renderAllGoalsModal();
     });
   });
   document.querySelectorAll('#subgoalsAutoCompleteOptions .option-btn').forEach(btn => {
@@ -1257,6 +1525,7 @@
     renderCategoryDropdown();
     renderSidebarGoals();
     renderDayPreview();
+    renderAllGoalsModal();
     renderCalendar();
   });
 

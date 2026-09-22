@@ -31,6 +31,14 @@
           <button type="button" class="mini-btn-ghost" id="categoryAddCancel">Cancel</button>
         </div>
       </form>
+      <form class="subcategory-add-form" id="subcategoryAddForm" hidden>
+        <div class="subcategory-add-label" id="subcategoryAddLabel">Add subcategory</div>
+        <input class="category-add-input" id="subcategoryAddInput" type="text" placeholder="Subcategory name" maxlength="24">
+        <div class="category-add-actions">
+          <button type="submit" class="mini-btn-primary">Add</button>
+          <button type="button" class="mini-btn-ghost" id="subcategoryAddCancel">Cancel</button>
+        </div>
+      </form>
     </div>
 
     <div>
@@ -54,6 +62,7 @@
             <svg class="cd-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
           </button>
           <div class="cd-menu" id="cdMenu" role="listbox" hidden></div>
+          <div class="cd-submenu" id="cdSubMenu" role="listbox" hidden></div>
         </div>
         <div id="significanceGroup">
           <div class="field-label">Significance</div>
@@ -77,7 +86,8 @@
   <div class="main-col">
     <div class="account-row">
       <span id="accountLabel">Loading account…</span>
-      <button class="gear-btn" id="gearBtn" aria-label="Settings" style="margin-left:auto;">&#9881;</button>
+      <button class="all-goals-btn" id="allGoalsBtn" style="margin-left:auto;">All goals</button>
+      <button class="gear-btn" id="gearBtn" aria-label="Settings">&#9881;</button>
       <button class="logout-btn" id="logoutBtn">Log out</button>
     </div>
 
@@ -127,6 +137,16 @@
     </div>
     <button class="add-btn" type="submit">Add goal</button>
   </form>
+</div>
+
+<div class="drawer-overlay" id="allGoalsOverlay"></div>
+<div class="all-goals-modal" id="allGoalsModal">
+  <div class="dp-head">
+    <span class="dp-date">All goals</span>
+    <button class="icon-btn" id="allGoalsCloseBtn" aria-label="Close">&#10005;</button>
+  </div>
+  <div class="all-goals-count" id="allGoalsCount"></div>
+  <div class="all-goals-body" id="allGoalsBody"></div>
 </div>
 
 <div class="drawer-overlay" id="drawerOverlay"></div>
