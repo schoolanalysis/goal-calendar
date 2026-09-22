@@ -606,7 +606,12 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
 /* ---- pillars: hover-to-expand three-part section ---- */
 
 .pillars-section {
-  margin: 2vh 0 10vh;
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  padding-top: 2vh;
+  padding-bottom: 10vh;
+  background: var(--bg-elevated);
 }
 
 .pillars-heading {
@@ -928,6 +933,28 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
 .chip-remove:hover { opacity: 1; }
 .chip-remove:active { transform: scale(0.85); }
 
+.chip-add-sub {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,255,255,0.35);
+  color: inherit;
+  font-size: 9.5px;
+  cursor: pointer;
+  padding: 0;
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.1s cubic-bezier(.4,0,.2,1);
+}
+.category-chip:not(.active) .chip-add-sub { background: var(--line); }
+.category-chip:hover .chip-add-sub,
+.category-chip:focus-within .chip-add-sub { opacity: 0.75; }
+.chip-add-sub:hover { opacity: 1 !important; }
+.chip-add-sub:active { transform: scale(0.85); }
+
 .category-dot {
   width: 8px;
   height: 8px;
@@ -946,6 +973,24 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
 }
 
 .category-add-form[hidden] { display: none; }
+
+.subcategory-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  margin-top: 8px;
+}
+.subcategory-add-form[hidden] { display: none; }
+
+.subcategory-add-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
 
 .category-add-input {
   background: var(--bg-elevated);
@@ -1111,6 +1156,16 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
 }
 .goal-group-header:first-child { margin-top: 0; }
 .goal-group-header .category-dot { width: 7px; height: 7px; }
+
+.goal-subgroup-header {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ink-soft);
+  opacity: 0.8;
+  margin: 6px 0 -1px 14px;
+}
 
 .sidebar-goal-row {
   display: flex;
@@ -1294,6 +1349,49 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
 .cd-option:hover { background: var(--primary-soft); }
 .cd-option:active { transform: scale(0.97); }
 .cd-option .category-dot { width: 9px; height: 9px; }
+.cd-option-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.cd-sub-arrow, .cd-sub-arrow-spacer { width: 11px; height: 11px; flex: none; }
+.cd-sub-arrow { color: var(--ink-soft); }
+
+/* Hover-delay flyout of a category's subcategories, preferably to the
+   left of the main dropdown — opened after a ~1s hover (see cdMenu's
+   mouseenter wiring in app.js, which also computes left/top in viewport
+   coordinates, flipping to the right and clamping on-screen when there's
+   no room to the left). Never opened via CSS :hover alone. */
+.cd-submenu {
+  position: fixed;
+  background: var(--bg-elevated);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 12px 28px var(--shadow);
+  padding: 6px;
+  min-width: 140px;
+  max-width: 200px;
+  max-height: 220px;
+  overflow-y: auto;
+  z-index: 210;
+}
+
+.cd-suboption {
+  width: 100%;
+  display: block;
+  background: none;
+  border: none;
+  border-radius: 7px;
+  padding: 8px 9px;
+  font-size: 13px;
+  color: var(--ink);
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background 0.12s ease, transform 0.1s cubic-bezier(.4,0,.2,1);
+}
+.cd-suboption:hover { background: var(--primary-soft); }
+.cd-suboption:active { transform: scale(0.97); }
 
 #significanceGroup { margin-top: 8px; }
 
@@ -1376,7 +1474,7 @@ h1.month-title {
 
 .nav-controls { display: flex; align-items: center; gap: 6px; }
 
-.nav-btn, .today-btn, .logout-btn, .gear-btn {
+.nav-btn, .today-btn, .logout-btn, .gear-btn, .all-goals-btn {
   font-family: 'Plus Jakarta Sans', sans-serif;
   font-size: 14px;
   background: var(--bg-elevated);
@@ -1390,8 +1488,8 @@ h1.month-title {
 }
 
 .nav-btn { padding: 8px 14px; font-size: 16px; }
-.nav-btn:hover, .today-btn:hover, .logout-btn:hover, .gear-btn:hover { border-color: var(--primary); }
-.nav-btn:active, .today-btn:active, .logout-btn:active, .gear-btn:active { transform: scale(0.94); }
+.nav-btn:hover, .today-btn:hover, .logout-btn:hover, .gear-btn:hover, .all-goals-btn:hover { border-color: var(--primary); }
+.nav-btn:active, .today-btn:active, .logout-btn:active, .gear-btn:active, .all-goals-btn:active { transform: scale(0.94); }
 
 .gear-btn { font-size: 16px; padding: 8px 10px; }
 
@@ -1753,6 +1851,76 @@ h1.month-title {
 }
 
 .dot-cat-picker { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; padding: 2px 0; }
+
+/* ---- "All goals" modal — a large, blocking browse-everything window ---- */
+
+.all-goals-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: min(560px, 92vw);
+  height: min(680px, 86vh);
+  transform: translate(-50%, -50%) scale(0.96);
+  background: var(--bg-elevated);
+  border-radius: 16px;
+  box-shadow: 0 30px 70px var(--shadow);
+  z-index: 210;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s cubic-bezier(.16,1,.3,1);
+}
+.all-goals-modal.open {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+  pointer-events: auto;
+}
+#allGoalsOverlay.open { z-index: 209; }
+
+.all-goals-count {
+  flex: none;
+  padding: 10px 18px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  border-bottom: 1px solid var(--line);
+}
+
+.all-goals-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.all-goals-date-header {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  font-family: 'Sora', sans-serif;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ink);
+  padding: 14px 4px 4px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: color 0.15s ease, transform 0.1s cubic-bezier(.4,0,.2,1);
+}
+.all-goals-date-header:first-child { padding-top: 2px; }
+.all-goals-date-header:hover { color: var(--primary); }
+.all-goals-date-header:active { transform: scale(0.99); }
+
+.all-goals-date-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 
 /* ---- settings drawer ---- */
 
