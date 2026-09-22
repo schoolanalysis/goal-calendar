@@ -14,6 +14,9 @@
     { id: 'personal', name: 'Personal', color: '#FF7A17' }
   ];
   const SWATCHES = ['#3355FF', '#0FBB63', '#8B3FF2', '#FF7A17', '#F23F7A', '#08B5D6', '#E5342E', '#D6B60A'];
+  // Max category dots shown in a calendar day-cell footer before folding
+  // the rest into a "+N" indicator, keeping the row from ever wrapping.
+  const DAY_DOTS_MAX = 4;
 
   let categories = [];
 
@@ -839,7 +842,7 @@
       dayPreview.classList.remove('open', 'morphing');
       dayPreview.removeAttribute('style');
       if (onComplete) onComplete();
-    }, 340);
+    }, 190);
   }
 
   // The one moment the sidebar is allowed to jump to a different day: the
@@ -1013,15 +1016,26 @@
         if (settings.showCategories) {
           const dots = document.createElement('div');
           dots.className = 'day-dots';
-          sortGoals(goals).forEach(g => {
-            const cat = displayCategory(g.category);
-            if (!cat) return;
+          const dotCats = sortGoals(goals).map(g => displayCategory(g.category)).filter(Boolean);
+          // Cap to one row instead of letting dots wrap — a wrapped second
+          // row grows the cell taller than its grid row expects and ends
+          // up visually swallowed by the next row of cells underneath it.
+          const shown = dotCats.length > DAY_DOTS_MAX ? dotCats.slice(0, DAY_DOTS_MAX - 1) : dotCats;
+          shown.forEach(cat => {
             const dot = document.createElement('span');
             dot.className = 'day-dot';
             dot.style.background = cat.color;
             dot.title = cat.name;
             dots.appendChild(dot);
           });
+          if (dotCats.length > shown.length) {
+            const extra = dotCats.length - shown.length;
+            const more = document.createElement('span');
+            more.className = 'day-dot-more';
+            more.textContent = '+' + extra;
+            more.title = extra + ' more';
+            dots.appendChild(more);
+          }
           if (dots.childNodes.length) footer.appendChild(dots);
         }
 
