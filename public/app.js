@@ -489,23 +489,13 @@
 
     const meta = document.createElement('div');
     meta.className = 'sidebar-goal-meta';
-    if (settings.showCategories) {
-      const cat = displayCategory(g.category);
-      if (cat) {
-        if (opts.dotOnlyCategory) {
-          const dot = document.createElement('span');
-          dot.className = 'category-dot';
-          dot.style.background = cat.color;
-          dot.title = cat.name;
-          meta.appendChild(dot);
-        } else {
-          const tag = document.createElement('span');
-          tag.className = 'mini-category-tag';
-          tag.style.background = cat.color;
-          tag.textContent = cat.name;
-          meta.appendChild(tag);
-        }
-      }
+    const cat = settings.showCategories ? displayCategory(g.category) : null;
+    if (cat && !opts.dotOnlyCategory) {
+      const tag = document.createElement('span');
+      tag.className = 'mini-category-tag';
+      tag.style.background = cat.color;
+      tag.textContent = cat.name;
+      meta.appendChild(tag);
     }
     if (settings.showSignificance && g.stars) {
       const stars = document.createElement('span');
@@ -591,10 +581,24 @@
     row.appendChild(toggle);
     row.appendChild(main);
 
-    if (settings.subgoalsEnabled) {
+    function buildRemoveBtn() {
+      const remove = document.createElement('button');
+      remove.className = 'goal-remove';
+      remove.type = 'button';
+      remove.innerHTML = '&#10005;';
+      remove.addEventListener('click', () => {
+        const idx = fullList.indexOf(g);
+        if (idx > -1) fullList.splice(idx, 1);
+        scheduleSave();
+        opts.onRefresh();
+      });
+      return remove;
+    }
+
+    function buildPlusBtn(className) {
       const plus = document.createElement('button');
       plus.type = 'button';
-      plus.className = 'subgoal-add-btn';
+      plus.className = className;
       plus.setAttribute('aria-label', 'Add subgoal');
       plus.innerHTML = '&#43;';
       plus.addEventListener('click', (e) => {
@@ -602,45 +606,58 @@
         openSubgoalFormFor = (openSubgoalFormFor === g.id) ? null : g.id;
         opts.onRefresh();
       });
-      row.appendChild(plus);
+      return plus;
     }
 
-    if (opts.canReorder) {
-      const reorderWrap = document.createElement('div');
-      reorderWrap.className = 'goal-reorder';
+    if (opts.dotOnlyCategory) {
+      // Compact layout: a trailing cluster of [dot, hover-only "+", "x"],
+      // spaced with its own margins (not the row's gap) so the collapsed
+      // "+" occupies no space — hovering expands it, pushing the dot left,
+      // while "x" stays put.
+      const cluster = document.createElement('div');
+      cluster.className = 'goal-row-trailing';
+      if (cat) {
+        const dot = document.createElement('span');
+        dot.className = 'category-dot goal-row-dot';
+        dot.style.background = cat.color;
+        dot.title = cat.name;
+        cluster.appendChild(dot);
+      }
+      if (settings.subgoalsEnabled) cluster.appendChild(buildPlusBtn('compact-plus-btn'));
+      const removeCompact = buildRemoveBtn();
+      removeCompact.classList.add('goal-remove-compact');
+      cluster.appendChild(removeCompact);
+      row.appendChild(cluster);
+    } else {
+      if (settings.subgoalsEnabled) row.appendChild(buildPlusBtn('subgoal-add-btn'));
 
-      const up = document.createElement('button');
-      up.type = 'button';
-      up.className = 'reorder-btn';
-      up.innerHTML = '&#9650;';
-      up.setAttribute('aria-label', 'Move up');
-      up.disabled = opts.displayIdx === 0;
-      up.addEventListener('click', () => moveGoal(fullList, g, -1));
+      if (opts.canReorder) {
+        const reorderWrap = document.createElement('div');
+        reorderWrap.className = 'goal-reorder';
 
-      const down = document.createElement('button');
-      down.type = 'button';
-      down.className = 'reorder-btn';
-      down.innerHTML = '&#9660;';
-      down.setAttribute('aria-label', 'Move down');
-      down.disabled = opts.displayIdx === opts.list.length - 1;
-      down.addEventListener('click', () => moveGoal(fullList, g, 1));
+        const up = document.createElement('button');
+        up.type = 'button';
+        up.className = 'reorder-btn';
+        up.innerHTML = '&#9650;';
+        up.setAttribute('aria-label', 'Move up');
+        up.disabled = opts.displayIdx === 0;
+        up.addEventListener('click', () => moveGoal(fullList, g, -1));
 
-      reorderWrap.appendChild(up);
-      reorderWrap.appendChild(down);
-      row.appendChild(reorderWrap);
+        const down = document.createElement('button');
+        down.type = 'button';
+        down.className = 'reorder-btn';
+        down.innerHTML = '&#9660;';
+        down.setAttribute('aria-label', 'Move down');
+        down.disabled = opts.displayIdx === opts.list.length - 1;
+        down.addEventListener('click', () => moveGoal(fullList, g, 1));
+
+        reorderWrap.appendChild(up);
+        reorderWrap.appendChild(down);
+        row.appendChild(reorderWrap);
+      }
+
+      row.appendChild(buildRemoveBtn());
     }
-
-    const remove = document.createElement('button');
-    remove.className = 'goal-remove';
-    remove.type = 'button';
-    remove.innerHTML = '&#10005;';
-    remove.addEventListener('click', () => {
-      const idx = fullList.indexOf(g);
-      if (idx > -1) fullList.splice(idx, 1);
-      scheduleSave();
-      opts.onRefresh();
-    });
-    row.appendChild(remove);
 
     return row;
   }
@@ -670,16 +687,24 @@
     }
 
     if (settings.sortMode === 'category') {
-      groupGoalsByCategory(filteredList).forEach(group => {
-        const header = document.createElement('div');
-        header.className = 'goal-group-header';
-        const dot = document.createElement('span');
-        dot.className = 'category-dot';
-        dot.style.background = group.category.color;
-        dot.title = group.category.name;
-        header.appendChild(dot);
-        header.appendChild(document.createTextNode(group.category.name));
-        container.appendChild(header);
+      const groups = groupGoalsByCategory(filteredList);
+      // "Any" carries no meaningful tag, so it gets no header and sits
+      // last instead of wherever it would otherwise rank.
+      const anyIdx = groups.findIndex(gr => gr.category.id === 'any');
+      if (anyIdx !== -1) groups.push(groups.splice(anyIdx, 1)[0]);
+
+      groups.forEach(group => {
+        if (opts.showCategoryHeaders && group.category.id !== 'any') {
+          const header = document.createElement('div');
+          header.className = 'goal-group-header';
+          const dot = document.createElement('span');
+          dot.className = 'category-dot';
+          dot.style.background = group.category.color;
+          dot.title = group.category.name;
+          header.appendChild(dot);
+          header.appendChild(document.createTextNode(group.category.name));
+          container.appendChild(header);
+        }
 
         group.goals.forEach(g => {
           container.appendChild(buildGoalRowEl(g, fullList, {
@@ -713,6 +738,7 @@
     renderGoalListInto(sidebarGoalList, fullList, filteredList, {
       dotOnlyCategory: false,
       canReorder,
+      showCategoryHeaders: true,
       onRefresh: refreshAfterGoalChange
     });
     focusOpenSubgoalInput(sidebarGoalList);
@@ -747,6 +773,7 @@
     renderGoalListInto(dpGoalList, fullList, filteredList, {
       dotOnlyCategory: true,
       canReorder: false,
+      showCategoryHeaders: false,
       onRefresh: refreshAfterGoalChange
     });
     focusOpenSubgoalInput(dpGoalList);
@@ -793,10 +820,10 @@
 
   // Animates the day-preview window sliding over onto the sidebar's own
   // position/size, fading as it lands, so it visually "becomes" the
-  // sidebar rather than just closing. The real sidebar content underneath
-  // is updated immediately, so it's already correct once the traveling
-  // window fades away and reveals it.
-  function morphDayPreviewIntoSidebar() {
+  // sidebar rather than just closing. The sidebar itself isn't touched
+  // until the window has completely finished traveling — onComplete runs
+  // only once it's fully arrived and faded out.
+  function morphDayPreviewIntoSidebar(onComplete) {
     const targetRect = sidebar.getBoundingClientRect();
 
     dayPreview.classList.add('morphing');
@@ -811,6 +838,7 @@
     morphTimer = setTimeout(() => {
       dayPreview.classList.remove('open', 'morphing');
       dayPreview.removeAttribute('style');
+      if (onComplete) onComplete();
     }, 340);
   }
 
@@ -818,14 +846,16 @@
   // user explicitly asked to, via "See goals", closing the preview.
   dpSeeGoalsBtn.addEventListener('click', () => {
     if (!previewDay) return;
-    selectedDay = previewDay;
-    if (selectedDay.getFullYear() !== viewYear || selectedDay.getMonth() !== viewMonth) {
-      viewYear = selectedDay.getFullYear();
-      viewMonth = selectedDay.getMonth();
-    }
-    renderCalendar();
-    renderSidebarGoals();
-    morphDayPreviewIntoSidebar();
+    const targetDay = previewDay;
+    morphDayPreviewIntoSidebar(() => {
+      selectedDay = targetDay;
+      if (selectedDay.getFullYear() !== viewYear || selectedDay.getMonth() !== viewMonth) {
+        viewYear = selectedDay.getFullYear();
+        viewMonth = selectedDay.getMonth();
+      }
+      renderCalendar();
+      renderSidebarGoals();
+    });
   });
 
   dpAddForm.addEventListener('submit', (e) => {
