@@ -1016,7 +1016,12 @@
         if (settings.showCategories) {
           const dots = document.createElement('div');
           dots.className = 'day-dots';
-          const dotCats = sortGoals(goals).map(g => displayCategory(g.category)).filter(Boolean);
+          // Every goal gets a dot slot here, "Any" and a since-deleted
+          // category included (in a neutral grey) — this cluster stands
+          // in for the day's goal count, so it must always add up to
+          // "goals.length", or a goal can silently vanish from it with no
+          // "+N" to explain the gap.
+          const dotCats = sortGoals(goals).map(g => findCategory(g.category) || { name: 'Uncategorized', color: '#9AA3B2' });
           // Cap to one row instead of letting dots wrap — a wrapped second
           // row grows the cell taller than its grid row expects and ends
           // up visually swallowed by the next row of cells underneath it.
