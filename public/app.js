@@ -201,6 +201,13 @@
       // pointer cursor but ignores clicks. Expand/remove stop propagation.
       wrap.addEventListener('click', () => {
         categoryFilter = (categoryFilter === cat.id) ? null : cat.id;
+        // While viewing one category, new goals default to it — otherwise
+        // they'd be tagged with whatever the pickers last held and filtered
+        // straight out of sight.
+        if (categoryFilter) {
+          if (selectedCategoryId !== cat.id) setSelectedCategory(cat.id, null);
+          if (dpCategoryId !== cat.id) { dpCategoryId = cat.id; renderDpCatPicker(); }
+        }
         renderCategoryList();
         renderSidebarGoals();
         renderDayPreview();
@@ -1230,23 +1237,37 @@
     });
   });
 
+  // A goal that was just added must be visible — a category filter or a
+  // collapsed group would otherwise hide it, which looks exactly like the
+  // add silently failing.
+  function revealNewGoal(g) {
+    if (categoryFilter && categoryFilter !== g.category) {
+      categoryFilter = null;
+      renderCategoryList();
+    }
+    collapsedGroups.delete('cat:' + g.category);
+    if (g.subcategory) collapsedGroups.delete('sub:' + g.category + ':' + g.subcategory);
+  }
+
   dpAddForm.addEventListener('submit', (e) => {
     e.preventDefault();
     const text = dpAddInput.value.trim();
     if (!text || !previewDay) return;
     const k = keyForDate(previewDay);
     if (!data[k]) data[k] = [];
-    data[k].push({
+    const goal = {
       id: 'g_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
       text: text,
       done: false,
       category: dpCategoryId || allCategories()[0].id,
       stars: dpStarValue
-    });
+    };
+    data[k].push(goal);
     scheduleSave();
     dpAddInput.value = '';
     dpStarValue = 0;
     renderDpStarPicker();
+    revealNewGoal(goal);
     refreshAfterGoalChange();
   });
 
@@ -1265,21 +1286,21 @@
     if (!text) return;
     const k = keyForDate(selectedDay);
     if (!data[k]) data[k] = [];
-    data[k].push({
+    const goal = {
       id: 'g_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
       text: text,
       done: false,
       category: selectedCategoryId || allCategories()[0].id,
       subcategory: selectedSubcategoryId || null,
       stars: starPickerValue
-    });
+    };
+    data[k].push(goal);
     scheduleSave();
     sidebarAddInput.value = '';
     starPickerValue = 0;
     renderStarPicker();
-    renderSidebarGoals();
-    renderAllGoalsModal();
-    renderCalendar();
+    revealNewGoal(goal);
+    refreshAfterGoalChange();
   }
 
   document.getElementById('sidebarAddForm').addEventListener('submit', (e) => {
