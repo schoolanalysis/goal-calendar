@@ -195,7 +195,11 @@
       btn.type = 'button';
       btn.className = 'chip-select';
       btn.innerHTML = '<span class="category-dot" style="background:' + (categoryFilter === cat.id ? '#fff' : cat.color) + '"></span><span>' + cat.name + '</span>';
-      btn.addEventListener('click', () => {
+      wrap.appendChild(btn);
+      // On the whole row, not just the inner button: the row's padding
+      // (over half its height) would otherwise be a dead zone that shows a
+      // pointer cursor but ignores clicks. Expand/remove stop propagation.
+      wrap.addEventListener('click', () => {
         categoryFilter = (categoryFilter === cat.id) ? null : cat.id;
         renderCategoryList();
         renderSidebarGoals();
@@ -203,7 +207,6 @@
         renderAllGoalsModal();
         renderCalendar();
       });
-      wrap.appendChild(btn);
 
       // Always visible — not hover-only — so subcategories are something a
       // student discovers just by looking, not a hidden trick they have to
