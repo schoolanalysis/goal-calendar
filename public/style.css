@@ -869,18 +869,23 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
 
 .categories-block { display: flex; flex-direction: column; gap: 8px; }
 
+/* One full-width row per category — easier to scan at a glance than a
+   wrapped row of pills, and gives each row room for its own trailing
+   controls (expand, remove) without crowding. */
 .category-list {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 6px;
 }
 
 .category-chip {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 5px;
-  padding: 5px 6px 5px 9px;
-  border-radius: 999px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 7px 6px 10px;
+  border-radius: 10px;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -891,20 +896,22 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
   white-space: nowrap;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s cubic-bezier(.4,0,.2,1);
 }
-.category-chip:active { transform: scale(0.95); }
+.category-chip:active { transform: scale(0.98); }
 
 .category-chip.category-add-chip {
   border-style: dashed;
   color: var(--ink-soft);
   background: none;
-  padding: 5px 10px;
+  padding: 6px 10px;
 }
 .category-chip.category-add-chip:hover { border-color: var(--primary); color: var(--primary); }
 
 .chip-select {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 5px;
+  flex: 1;
+  min-width: 0;
   background: none;
   border: none;
   padding: 0;
@@ -912,6 +919,7 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
   color: inherit;
   cursor: pointer;
 }
+.chip-select span:last-child { overflow: hidden; text-overflow: ellipsis; }
 
 .chip-remove {
   display: inline-flex;
@@ -1196,6 +1204,35 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
 }
 .goal-subgroup-header .category-dot { width: 6px; height: 6px; }
 
+/* Folds a group's goals away — sits at the header's right edge, in its
+   own visible circle so it reads as a clickable control at a glance. */
+.group-collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-left: auto;
+  flex: none;
+  border-radius: 50%;
+  border: 1.5px solid var(--line);
+  background: var(--bg);
+  color: var(--ink-soft);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.15s cubic-bezier(.4,0,.2,1), background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.group-collapse-btn:hover { background: var(--primary-soft); border-color: var(--primary); color: var(--primary); }
+.group-collapse-btn:active { transform: scale(0.88); }
+.group-collapse-btn svg { width: 10px; height: 10px; transition: transform 0.2s ease; }
+.group-collapse-btn.collapsed svg { transform: rotate(-90deg); }
+.group-collapse-btn.small { width: 15px; height: 15px; }
+.group-collapse-btn.small svg { width: 8px; height: 8px; }
+
+/* A subcategory's goals sit slightly right of the category's own, so the
+   two are easy to tell apart at a glance even without re-reading headers. */
+.goal-row-indented { margin-left: 14px; }
+
 .sidebar-goal-row {
   display: flex;
   align-items: flex-start;
@@ -1383,25 +1420,29 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
 /* A tap/click target (not hover) that expands a category's
    subcategories inline, right below it in the same scrollable list —
    works identically with mouse or touch, and needs no flyout
-   positioning logic at all. */
+   positioning logic at all. Sits on the right, in its own visible
+   circle, so it reads as an obvious control rather than decoration. */
 .cd-expand-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 21px;
+  height: 21px;
   flex: none;
-  border: none;
-  background: none;
+  border: 1.5px solid var(--line);
+  border-radius: 50%;
+  background: var(--bg);
   color: var(--ink-soft);
   cursor: pointer;
   padding: 0;
-  border-radius: 5px;
+  transition: transform 0.15s cubic-bezier(.4,0,.2,1), background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
-.cd-expand-btn:hover { background: var(--primary-soft); color: var(--primary); }
-.cd-expand-btn svg { width: 12px; height: 12px; transition: transform 0.2s ease; }
+.cd-expand-btn:hover { background: var(--primary-soft); border-color: var(--primary); color: var(--primary); }
+.cd-expand-btn:active { transform: scale(0.9); }
+.cd-expand-btn.expanded { background: var(--primary-soft); border-color: var(--primary); color: var(--primary); }
+.cd-expand-btn svg { width: 11px; height: 11px; transition: transform 0.2s ease; }
 .cd-expand-btn.expanded svg { transform: rotate(90deg); }
-.cd-expand-spacer { width: 18px; height: 18px; flex: none; }
+.cd-expand-spacer { width: 21px; height: 21px; flex: none; }
 
 .cd-suboption {
   width: 100%;

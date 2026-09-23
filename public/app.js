@@ -88,6 +88,11 @@
   let selectedSubcategoryId = null;
   let subcategoryFormFor = null; // category id whose inline "add subcategory" form is open, or null
   let expandedChipCategoryIds = new Set(); // category ids whose subcategory row is expanded in the sidebar
+  // Keys of goal-list group/subgroup headers currently collapsed (goals
+  // hidden) — 'cat:<id>' for a category, 'sub:<catId>:<subId>' for a
+  // subcategory. Shared across the sidebar, day-preview, and "All goals",
+  // so collapsing a category in one place collapses it everywhere.
+  let collapsedGroups = new Set();
   let previewDay = null; // date currently shown in the day-preview overlay, or null when closed
   let openSubgoalFormFor = null; // goal id whose inline "add subgoal" form is open, or null
   let justCompletedId = null; // goal/subgoal id to play a completion "pop" on, for one render pass
@@ -419,6 +424,19 @@
       opt.className = 'cd-option';
       opt.setAttribute('role', 'option');
 
+      const dot = document.createElement('span');
+      dot.className = 'category-dot';
+      dot.style.background = cat.color;
+      opt.appendChild(dot);
+
+      const label = document.createElement('span');
+      label.className = 'cd-option-label';
+      label.textContent = cat.name;
+      opt.appendChild(label);
+
+      // On the right, clearly visible (not a bare hover-only icon), so a
+      // category's subcategories are an obvious, inviting thing to open
+      // rather than a control the user has to go looking for.
       if (hasSubs) {
         const expandBtn = document.createElement('button');
         expandBtn.type = 'button';
@@ -437,16 +455,6 @@
         spacer.className = 'cd-expand-spacer';
         opt.appendChild(spacer);
       }
-
-      const dot = document.createElement('span');
-      dot.className = 'category-dot';
-      dot.style.background = cat.color;
-      opt.appendChild(dot);
-
-      const label = document.createElement('span');
-      label.className = 'cd-option-label';
-      label.textContent = cat.name;
-      opt.appendChild(label);
 
       opt.addEventListener('click', () => {
         setSelectedCategory(cat.id, null);
@@ -887,6 +895,18 @@
       : WEEKDAY_FULL[selectedDay.getDay()] + ', ' + MONTH_NAMES[selectedDay.getMonth()] + ' ' + selectedDay.getDate();
   }
 
+  // A small circular chevron for a goal-group/subgroup header, on its
+  // right edge, that folds its goals away — collapsed state is shared
+  // (via collapsedGroups) across every place that header can appear.
+  function buildGroupCollapseBtn(key, collapsed, name, small) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'group-collapse-btn' + (small ? ' small' : '') + (collapsed ? ' collapsed' : '');
+    btn.setAttribute('aria-label', (collapsed ? 'Expand' : 'Collapse') + ' ' + name);
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
+    return btn;
+  }
+
   // Renders a goal list into a container, either as a flat list (sorted by
   // significance or in manual order) or, in "sort by category" mode,
   // grouped under a header per category with each group sub-sorted by
@@ -910,8 +930,30 @@
       const anyIdx = groups.findIndex(gr => gr.category.id === 'any');
       if (anyIdx !== -1) groups.push(groups.splice(anyIdx, 1)[0]);
 
+      // Collapsing only makes sense where a header is actually shown (the
+      // day-preview hides headers for compactness) — otherwise a category
+      // collapsed from the sidebar would make its goals silently vanish
+      // from an unrelated, header-less view.
+      const collapsible = !!opts.showCategoryHeaders;
+
+      const appendGoalRow = (g, indent) => {
+        const row = buildGoalRowEl(g, fullList, {
+          dotOnlyCategory: true,
+          canReorder: false,
+          onRefresh: opts.onRefresh
+        });
+        // Pushed slightly right so a subcategory's goals read as visually
+        // nested under it, distinct from the category's own general goals.
+        if (indent) row.classList.add('goal-row-indented');
+        container.appendChild(row);
+      };
+
       groups.forEach(group => {
-        if (opts.showCategoryHeaders && group.category.id !== 'any') {
+        const hasHeader = opts.showCategoryHeaders && group.category.id !== 'any';
+        const groupKey = 'cat:' + group.category.id;
+        const groupCollapsed = collapsible && collapsedGroups.has(groupKey);
+
+        if (hasHeader) {
           const header = document.createElement('div');
           header.className = 'goal-group-header';
           const dot = document.createElement('span');
@@ -920,17 +962,23 @@
           dot.title = group.category.name;
           header.appendChild(dot);
           header.appendChild(document.createTextNode(group.category.name));
+          const collapseBtn = buildGroupCollapseBtn(groupKey, groupCollapsed, group.category.name, false);
+          collapseBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (collapsedGroups.has(groupKey)) collapsedGroups.delete(groupKey);
+            else collapsedGroups.add(groupKey);
+            opts.onRefresh();
+          });
+          header.appendChild(collapseBtn);
           container.appendChild(header);
         }
 
-        const appendGoalRow = g => container.appendChild(buildGoalRowEl(g, fullList, {
-          dotOnlyCategory: true,
-          canReorder: false,
-          onRefresh: opts.onRefresh
-        }));
+        if (groupCollapsed) return;
 
         const { general, subGroups } = groupGoalsBySubcategory(group.goals, group.category);
         subGroups.forEach(sg => {
+          const subKey = 'sub:' + group.category.id + ':' + sg.subcategory.id;
+          const subCollapsed = collapsible && collapsedGroups.has(subKey);
           if (opts.showCategoryHeaders) {
             const subHeader = document.createElement('div');
             subHeader.className = 'goal-subgroup-header';
@@ -939,11 +987,20 @@
             subDot.style.background = sg.subcategory.color || group.category.color;
             subHeader.appendChild(subDot);
             subHeader.appendChild(document.createTextNode(sg.subcategory.name));
+            const subCollapseBtn = buildGroupCollapseBtn(subKey, subCollapsed, sg.subcategory.name, true);
+            subCollapseBtn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              if (collapsedGroups.has(subKey)) collapsedGroups.delete(subKey);
+              else collapsedGroups.add(subKey);
+              opts.onRefresh();
+            });
+            subHeader.appendChild(subCollapseBtn);
             container.appendChild(subHeader);
           }
-          sg.goals.forEach(appendGoalRow);
+          if (subCollapsed) return;
+          sg.goals.forEach(g => appendGoalRow(g, true));
         });
-        general.forEach(appendGoalRow);
+        general.forEach(g => appendGoalRow(g, false));
       });
     } else {
       const list = sortGoals(filteredList);
