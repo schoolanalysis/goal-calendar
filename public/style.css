@@ -933,7 +933,11 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
 .chip-remove:hover { opacity: 1; }
 .chip-remove:active { transform: scale(0.85); }
 
-.chip-add-sub {
+/* Always-visible (not hover-gated) expand toggle for a category's
+   subcategories — hover-only affordances aren't discoverable enough for
+   a feature meant to be used constantly, and don't exist at all on
+   touch devices. */
+.chip-expand {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -943,17 +947,15 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
   border: none;
   background: rgba(255,255,255,0.35);
   color: inherit;
-  font-size: 9.5px;
   cursor: pointer;
   padding: 0;
-  opacity: 0;
-  transition: opacity 0.15s ease, transform 0.1s cubic-bezier(.4,0,.2,1);
+  opacity: 0.75;
+  transition: opacity 0.15s ease, transform 0.2s ease;
 }
-.category-chip:not(.active) .chip-add-sub { background: var(--line); }
-.category-chip:hover .chip-add-sub,
-.category-chip:focus-within .chip-add-sub { opacity: 0.75; }
-.chip-add-sub:hover { opacity: 1 !important; }
-.chip-add-sub:active { transform: scale(0.85); }
+.category-chip:not(.active) .chip-expand { background: var(--line); }
+.chip-expand:hover { opacity: 1; }
+.chip-expand svg { width: 9px; height: 9px; transition: transform 0.2s ease; }
+.chip-expand.expanded svg { transform: rotate(180deg); }
 
 .category-dot {
   width: 8px;
@@ -974,23 +976,46 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
 
 .category-add-form[hidden] { display: none; }
 
-.subcategory-add-form {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  background: var(--bg);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 10px;
-  margin-top: 8px;
-}
-.subcategory-add-form[hidden] { display: none; }
-
-.subcategory-add-label {
+.category-add-label {
   font-size: 12px;
   font-weight: 600;
   color: var(--ink-soft);
 }
+
+/* A category's subcategory chips — same visual language as the
+   top-level category row, one level in, so the whole system reads as
+   "the same thing, nested" rather than a separate feature to learn. */
+.subcategory-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  flex-basis: 100%;
+  width: 100%;
+  margin: 2px 0 2px 16px;
+  padding-left: 8px;
+  border-left: 2px solid var(--line);
+}
+
+.subcategory-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 6px 4px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.subcategory-chip .category-dot { width: 7px; height: 7px; }
+
+.subcategory-chip .chip-remove { width: 13px; height: 13px; font-size: 7.5px; }
+
+.subcategory-chip.category-add-chip { padding: 4px 8px; font-size: 11.5px; }
 
 .category-add-input {
   background: var(--bg-elevated);
@@ -1158,14 +1183,18 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
 .goal-group-header .category-dot { width: 7px; height: 7px; }
 
 .goal-subgroup-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.03em;
   color: var(--ink-soft);
-  opacity: 0.8;
+  opacity: 0.85;
   margin: 6px 0 -1px 14px;
 }
+.goal-subgroup-header .category-dot { width: 6px; height: 6px; }
 
 .sidebar-goal-row {
   display: flex;
@@ -1351,47 +1380,48 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
 .cd-option .category-dot { width: 9px; height: 9px; }
 .cd-option-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.cd-sub-arrow, .cd-sub-arrow-spacer { width: 11px; height: 11px; flex: none; }
-.cd-sub-arrow { color: var(--ink-soft); }
-
-/* Hover-delay flyout of a category's subcategories, preferably to the
-   left of the main dropdown — opened after a ~1s hover (see cdMenu's
-   mouseenter wiring in app.js, which also computes left/top in viewport
-   coordinates, flipping to the right and clamping on-screen when there's
-   no room to the left). Never opened via CSS :hover alone. */
-.cd-submenu {
-  position: fixed;
-  background: var(--bg-elevated);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  box-shadow: 0 12px 28px var(--shadow);
-  padding: 6px;
-  min-width: 140px;
-  max-width: 200px;
-  max-height: 220px;
-  overflow-y: auto;
-  z-index: 210;
+/* A tap/click target (not hover) that expands a category's
+   subcategories inline, right below it in the same scrollable list —
+   works identically with mouse or touch, and needs no flyout
+   positioning logic at all. */
+.cd-expand-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border: none;
+  background: none;
+  color: var(--ink-soft);
+  cursor: pointer;
+  padding: 0;
+  border-radius: 5px;
 }
+.cd-expand-btn:hover { background: var(--primary-soft); color: var(--primary); }
+.cd-expand-btn svg { width: 12px; height: 12px; transition: transform 0.2s ease; }
+.cd-expand-btn.expanded svg { transform: rotate(90deg); }
+.cd-expand-spacer { width: 18px; height: 18px; flex: none; }
 
 .cd-suboption {
   width: 100%;
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   background: none;
   border: none;
   border-radius: 7px;
-  padding: 8px 9px;
+  padding: 7px 9px 7px 30px;
   font-size: 13px;
   color: var(--ink);
   font-family: inherit;
   cursor: pointer;
   text-align: left;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   transition: background 0.12s ease, transform 0.1s cubic-bezier(.4,0,.2,1);
 }
 .cd-suboption:hover { background: var(--primary-soft); }
 .cd-suboption:active { transform: scale(0.97); }
+.cd-suboption .category-dot { width: 8px; height: 8px; }
 
 #significanceGroup { margin-top: 8px; }
 
