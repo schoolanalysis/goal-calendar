@@ -32,6 +32,23 @@
     const cat = findCategory(id);
     return (cat && cat.id !== 'any') ? cat : null;
   }
+  // Resolves the most specific color+name for a goal: its subcategory's own
+  // color/name when it has one that still exists, else its category's.
+  // Returns null for "Any"/deleted categories, same as displayCategory.
+  function goalDisplayInfo(g) {
+    const cat = displayCategory(g.category);
+    if (!cat) return null;
+    const sub = g.subcategory && cat.subcategories && cat.subcategories.find(s => s.id === g.subcategory);
+    return sub ? { color: sub.color || cat.color, name: sub.name } : { color: cat.color, name: cat.name };
+  }
+  // Same resolution as goalDisplayInfo, but never returns null — "Any" and
+  // deleted categories fall back to a neutral grey instead of being
+  // skipped, since the calendar's day-dot cluster needs one dot per goal.
+  function goalDotInfo(g) {
+    const cat = findCategory(g.category) || { name: 'Uncategorized', color: '#9AA3B2' };
+    const sub = g.subcategory && cat.subcategories && cat.subcategories.find(s => s.id === g.subcategory);
+    return sub ? { color: sub.color || cat.color, name: sub.name } : { color: cat.color, name: cat.name };
+  }
 
   const SETTINGS_KEY = 'goalkeepr-settings';
   let settings = {
@@ -70,7 +87,7 @@
   let selectedCategoryId = null;
   let selectedSubcategoryId = null;
   let subcategoryFormFor = null; // category id whose inline "add subcategory" form is open, or null
-  let subMenuTimer = null;
+  let expandedChipCategoryIds = new Set(); // category ids whose subcategory row is expanded in the sidebar
   let previewDay = null; // date currently shown in the day-preview overlay, or null when closed
   let openSubgoalFormFor = null; // goal id whose inline "add subgoal" form is open, or null
   let justCompletedId = null; // goal/subgoal id to play a completion "pop" on, for one render pass
@@ -182,20 +199,22 @@
       });
       wrap.appendChild(btn);
 
-      const addSub = document.createElement('button');
-      addSub.type = 'button';
-      addSub.className = 'chip-add-sub';
-      addSub.setAttribute('aria-label', 'Add subcategory to ' + cat.name);
-      addSub.title = 'Add subcategory';
-      addSub.innerHTML = '&#43;';
-      addSub.addEventListener('click', (e) => {
+      // Always visible — not hover-only — so subcategories are something a
+      // student discovers just by looking, not a hidden trick they have to
+      // be told about, and so it works the same with a finger as a mouse.
+      const isExpanded = expandedChipCategoryIds.has(cat.id);
+      const expandBtn = document.createElement('button');
+      expandBtn.type = 'button';
+      expandBtn.className = 'chip-expand' + (isExpanded ? ' expanded' : '');
+      expandBtn.setAttribute('aria-label', (isExpanded ? 'Hide' : 'Show') + ' ' + cat.name + ' subcategories');
+      expandBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
+      expandBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        subcategoryFormFor = (subcategoryFormFor === cat.id) ? null : cat.id;
-        if (subcategoryFormFor) document.getElementById('categoryAddForm').hidden = true;
+        if (isExpanded) expandedChipCategoryIds.delete(cat.id);
+        else expandedChipCategoryIds.add(cat.id);
         renderCategoryList();
-        if (subcategoryFormFor) document.getElementById('subcategoryAddInput').focus();
       });
-      wrap.appendChild(addSub);
+      wrap.appendChild(expandBtn);
 
       const remove = document.createElement('button');
       remove.type = 'button';
@@ -207,6 +226,7 @@
         categories = categories.filter(c => c.id !== cat.id);
         if (categoryFilter === cat.id) categoryFilter = null;
         if (subcategoryFormFor === cat.id) subcategoryFormFor = null;
+        expandedChipCategoryIds.delete(cat.id);
         scheduleSave();
         renderCategoryList();
         renderSidebarGoals();
@@ -218,6 +238,52 @@
       wrap.appendChild(remove);
 
       categoryListEl.appendChild(wrap);
+
+      if (isExpanded) {
+        const subRow = document.createElement('div');
+        subRow.className = 'subcategory-row';
+
+        (cat.subcategories || []).forEach(sub => {
+          const subWrap = document.createElement('span');
+          subWrap.className = 'subcategory-chip';
+          const subDot = document.createElement('span');
+          subDot.className = 'category-dot';
+          subDot.style.background = sub.color || cat.color;
+          subWrap.appendChild(subDot);
+          subWrap.appendChild(document.createTextNode(sub.name));
+
+          const subRemove = document.createElement('button');
+          subRemove.type = 'button';
+          subRemove.className = 'chip-remove';
+          subRemove.setAttribute('aria-label', 'Remove ' + sub.name + ' subcategory');
+          subRemove.innerHTML = '&#10005;';
+          subRemove.addEventListener('click', () => {
+            cat.subcategories = cat.subcategories.filter(s => s.id !== sub.id);
+            scheduleSave();
+            renderCategoryList();
+            renderCategoryDropdown();
+            renderSidebarGoals();
+            renderDayPreview();
+            renderAllGoalsModal();
+            renderCalendar();
+          });
+          subWrap.appendChild(subRemove);
+
+          subRow.appendChild(subWrap);
+        });
+
+        const addSubChip = document.createElement('button');
+        addSubChip.type = 'button';
+        addSubChip.className = 'subcategory-chip category-add-chip';
+        addSubChip.textContent = '+ Add';
+        addSubChip.addEventListener('click', () => {
+          subcategoryFormFor = cat.id;
+          openCategoryAddForm();
+        });
+        subRow.appendChild(addSubChip);
+
+        categoryListEl.appendChild(subRow);
+      }
     });
 
     const addChip = document.createElement('button');
@@ -225,31 +291,28 @@
     addChip.className = 'category-chip category-add-chip';
     addChip.textContent = '+ Add';
     addChip.addEventListener('click', () => {
-      const form = document.getElementById('categoryAddForm');
-      form.hidden = !form.hidden;
-      if (!form.hidden) {
-        subcategoryFormFor = null;
-        syncSubcategoryForm();
-        document.getElementById('categoryAddInput').focus();
+      if (!categoryAddForm.hidden && !subcategoryFormFor) {
+        categoryAddForm.hidden = true;
+        return;
       }
+      subcategoryFormFor = null;
+      openCategoryAddForm();
     });
     categoryListEl.appendChild(addChip);
-
-    syncSubcategoryForm();
   }
 
-  // Keeps the static "add subcategory" form's visibility/label in sync
-  // with subcategoryFormFor, closing it if its category got deleted.
-  function syncSubcategoryForm() {
-    const form = document.getElementById('subcategoryAddForm');
-    if (subcategoryFormFor && !categories.some(c => c.id === subcategoryFormFor)) {
-      subcategoryFormFor = null;
-    }
-    form.hidden = !subcategoryFormFor;
-    if (subcategoryFormFor) {
-      const cat = categories.find(c => c.id === subcategoryFormFor);
-      document.getElementById('subcategoryAddLabel').textContent = 'New subcategory for ' + (cat ? cat.name : '');
-    }
+  // Opens the shared add-category-or-subcategory form, labeling and
+  // resetting it for whichever context subcategoryFormFor implies.
+  function openCategoryAddForm() {
+    const cat = subcategoryFormFor && categories.find(c => c.id === subcategoryFormFor);
+    document.getElementById('categoryAddLabel').textContent = cat ? ('New subcategory for ' + cat.name) : 'New category';
+    categoryAddInput.placeholder = cat ? 'Subcategory name' : 'Category name';
+    categoryAddForm.hidden = false;
+    categoryAddInput.value = '';
+    customColorPicked = false;
+    swatchPick = SWATCHES[(cat ? (cat.subcategories || []).length : categories.length) % SWATCHES.length];
+    renderSwatchRow();
+    categoryAddInput.focus();
   }
 
   // ---------- custom category creation ----------
@@ -291,52 +354,43 @@
     e.preventDefault();
     const name = categoryAddInput.value.trim();
     if (!name) return;
-    const id = 'custom_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
-    categories.push({ id, name, color: swatchPick });
+    const cat = subcategoryFormFor && categories.find(c => c.id === subcategoryFormFor);
+    if (cat) {
+      if (!cat.subcategories) cat.subcategories = [];
+      const id = 'sub_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+      cat.subcategories.push({ id, name, color: swatchPick });
+      expandedChipCategoryIds.add(cat.id);
+    } else {
+      const id = 'custom_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+      categories.push({ id, name, color: swatchPick });
+    }
     scheduleSave();
     categoryAddInput.value = '';
     customColorPicked = false;
     swatchPick = SWATCHES[categories.length % SWATCHES.length];
     renderSwatchRow();
     categoryAddForm.hidden = true;
+    subcategoryFormFor = null;
     renderCategoryList();
     renderCategoryDropdown();
+    renderSidebarGoals();
     renderDayPreview();
     renderAllGoalsModal();
+    renderCalendar();
   });
 
   document.getElementById('categoryAddCancel').addEventListener('click', () => {
     categoryAddForm.hidden = true;
     categoryAddInput.value = '';
-  });
-
-  document.getElementById('subcategoryAddForm').addEventListener('submit', (e) => {
-    e.preventDefault();
-    const input = document.getElementById('subcategoryAddInput');
-    const name = input.value.trim();
-    const cat = subcategoryFormFor && categories.find(c => c.id === subcategoryFormFor);
-    if (!name || !cat) return;
-    if (!cat.subcategories) cat.subcategories = [];
-    cat.subcategories.push({ id: 'sub_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), name });
-    scheduleSave();
-    input.value = '';
     subcategoryFormFor = null;
-    renderCategoryList();
-    renderCategoryDropdown();
-  });
-
-  document.getElementById('subcategoryAddCancel').addEventListener('click', () => {
-    subcategoryFormFor = null;
-    document.getElementById('subcategoryAddInput').value = '';
-    renderCategoryList();
   });
 
   // ---------- custom category dropdown (add-goal form) ----------
   const cdTrigger = document.getElementById('cdTrigger');
   const cdMenu = document.getElementById('cdMenu');
-  const cdSubMenu = document.getElementById('cdSubMenu');
   const cdDot = document.getElementById('cdDot');
   const cdLabel = document.getElementById('cdLabel');
+  let expandedDropdownCategoryIds = new Set();
 
   function subcategoryName(cat, subId) {
     const sub = cat && cat.subcategories && cat.subcategories.find(s => s.id === subId);
@@ -347,94 +401,80 @@
     const cat = findCategory(id) || allCategories()[0];
     selectedCategoryId = cat.id;
     selectedSubcategoryId = subId || null;
-    cdDot.style.background = cat.color;
-    cdLabel.textContent = cat.name + (selectedSubcategoryId ? ' — ' + subcategoryName(cat, selectedSubcategoryId) : '');
+    const sub = selectedSubcategoryId && cat.subcategories && cat.subcategories.find(s => s.id === selectedSubcategoryId);
+    cdDot.style.background = (sub && sub.color) || cat.color;
+    cdLabel.textContent = cat.name + (sub ? ' — ' + sub.name : '');
   }
 
-  function closeSubMenu() {
-    clearTimeout(subMenuTimer);
-    cdSubMenu.hidden = true;
-  }
-
-  // Ported onto <body> so it always paints above everything else,
-  // regardless of any stacking context formed by its original ancestors
-  // (a plain deep z-index bumped into exactly that here) — the standard
-  // fix used by dropdown/flyout libraries for floating UI.
-  document.body.appendChild(cdSubMenu);
-
-  function openSubMenu(cat, optionEl) {
-    cdSubMenu.innerHTML = '';
-    cat.subcategories.forEach(sub => {
-      const subOpt = document.createElement('button');
-      subOpt.type = 'button';
-      subOpt.className = 'cd-suboption';
-      subOpt.textContent = sub.name;
-      subOpt.addEventListener('click', () => {
-        setSelectedCategory(cat.id, sub.id);
-        closeCategoryDropdown();
-      });
-      cdSubMenu.appendChild(subOpt);
-    });
-
-    // Fixed/viewport-positioned rather than anchored via CSS: the sidebar
-    // (and so the dropdown) sits flush against the left edge of the
-    // screen, so "to the left" has to flip to the right when there's no
-    // room, and clamp on both axes, or it renders off-screen entirely.
-    cdSubMenu.hidden = false;
-    cdSubMenu.style.left = '-9999px';
-    cdSubMenu.style.top = '0px';
-
-    const menuRect = cdMenu.getBoundingClientRect();
-    const optionRect = optionEl.getBoundingClientRect();
-    const subMenuWidth = cdSubMenu.offsetWidth;
-    const subMenuHeight = cdSubMenu.offsetHeight;
-    const margin = 8;
-
-    const roomToLeft = menuRect.left - margin;
-    const left = roomToLeft >= subMenuWidth ? (menuRect.left - subMenuWidth - margin) : (menuRect.right + margin);
-    const clampedLeft = Math.max(margin, Math.min(left, window.innerWidth - subMenuWidth - margin));
-    const clampedTop = Math.max(margin, Math.min(optionRect.top, window.innerHeight - subMenuHeight - margin));
-
-    cdSubMenu.style.left = clampedLeft + 'px';
-    cdSubMenu.style.top = clampedTop + 'px';
-  }
-
+  // Click-to-expand accordion, right inside the scrollable option list —
+  // no hover timers, no separate floating panel to position, and it
+  // works identically with a mouse or a finger.
   function renderCategoryDropdown() {
     cdMenu.innerHTML = '';
     allCategories().forEach(cat => {
       const hasSubs = !!(cat.subcategories && cat.subcategories.length);
+      const isExpanded = hasSubs && expandedDropdownCategoryIds.has(cat.id);
       const opt = document.createElement('button');
       opt.type = 'button';
       opt.className = 'cd-option';
       opt.setAttribute('role', 'option');
-      opt.innerHTML =
-        (hasSubs
-          ? '<svg class="cd-sub-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>'
-          : '<span class="cd-sub-arrow-spacer"></span>') +
-        '<span class="category-dot" style="background:' + cat.color + '"></span>' +
-        '<span class="cd-option-label">' + cat.name + '</span>';
+
+      if (hasSubs) {
+        const expandBtn = document.createElement('button');
+        expandBtn.type = 'button';
+        expandBtn.className = 'cd-expand-btn' + (isExpanded ? ' expanded' : '');
+        expandBtn.setAttribute('aria-label', (isExpanded ? 'Hide' : 'Show') + ' ' + cat.name + ' subcategories');
+        expandBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
+        expandBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (expandedDropdownCategoryIds.has(cat.id)) expandedDropdownCategoryIds.delete(cat.id);
+          else expandedDropdownCategoryIds.add(cat.id);
+          renderCategoryDropdown();
+        });
+        opt.appendChild(expandBtn);
+      } else {
+        const spacer = document.createElement('span');
+        spacer.className = 'cd-expand-spacer';
+        opt.appendChild(spacer);
+      }
+
+      const dot = document.createElement('span');
+      dot.className = 'category-dot';
+      dot.style.background = cat.color;
+      opt.appendChild(dot);
+
+      const label = document.createElement('span');
+      label.className = 'cd-option-label';
+      label.textContent = cat.name;
+      opt.appendChild(label);
+
       opt.addEventListener('click', () => {
         setSelectedCategory(cat.id, null);
         closeCategoryDropdown();
       });
-      if (hasSubs) {
-        opt.addEventListener('mouseenter', () => {
-          clearTimeout(subMenuTimer);
-          subMenuTimer = setTimeout(() => openSubMenu(cat, opt), 1000);
-        });
-        opt.addEventListener('mouseleave', () => {
-          clearTimeout(subMenuTimer);
-          subMenuTimer = setTimeout(() => {
-            if (!cdSubMenu.matches(':hover')) closeSubMenu();
-          }, 200);
+      cdMenu.appendChild(opt);
+
+      if (isExpanded) {
+        cat.subcategories.forEach(sub => {
+          const subOpt = document.createElement('button');
+          subOpt.type = 'button';
+          subOpt.className = 'cd-suboption';
+          const subDot = document.createElement('span');
+          subDot.className = 'category-dot';
+          subDot.style.background = sub.color || cat.color;
+          subOpt.appendChild(subDot);
+          subOpt.appendChild(document.createTextNode(sub.name));
+          subOpt.addEventListener('click', () => {
+            setSelectedCategory(cat.id, sub.id);
+            closeCategoryDropdown();
+          });
+          cdMenu.appendChild(subOpt);
         });
       }
-      cdMenu.appendChild(opt);
     });
     if (!selectedCategoryId || !allCategories().some(c => c.id === selectedCategoryId)) {
       setSelectedCategory(allCategories()[0].id, null);
     }
-    closeSubMenu();
   }
 
   function openCategoryDropdown() {
@@ -444,7 +484,10 @@
   function closeCategoryDropdown() {
     cdMenu.hidden = true;
     cdTrigger.setAttribute('aria-expanded', 'false');
-    closeSubMenu();
+    if (expandedDropdownCategoryIds.size) {
+      expandedDropdownCategoryIds = new Set();
+      renderCategoryDropdown();
+    }
   }
   cdTrigger.addEventListener('click', () => {
     if (cdMenu.hidden) openCategoryDropdown(); else closeCategoryDropdown();
@@ -455,7 +498,6 @@
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeCategoryDropdown();
   });
-  cdSubMenu.addEventListener('mouseleave', closeSubMenu);
 
   sidebarStarPicker.querySelectorAll('button').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -664,12 +706,12 @@
 
     const meta = document.createElement('div');
     meta.className = 'sidebar-goal-meta';
-    const cat = settings.showCategories ? displayCategory(g.category) : null;
-    if (cat && !opts.dotOnlyCategory) {
+    const catInfo = settings.showCategories ? goalDisplayInfo(g) : null;
+    if (catInfo && !opts.dotOnlyCategory) {
       const tag = document.createElement('span');
       tag.className = 'mini-category-tag';
-      tag.style.background = cat.color;
-      tag.textContent = cat.name;
+      tag.style.background = catInfo.color;
+      tag.textContent = catInfo.name;
       meta.appendChild(tag);
     }
     if (settings.showSignificance && g.stars) {
@@ -791,11 +833,11 @@
       // while "x" stays put.
       const cluster = document.createElement('div');
       cluster.className = 'goal-row-trailing';
-      if (cat) {
+      if (catInfo) {
         const dot = document.createElement('span');
         dot.className = 'category-dot goal-row-dot';
-        dot.style.background = cat.color;
-        dot.title = cat.name;
+        dot.style.background = catInfo.color;
+        dot.title = catInfo.name;
         cluster.appendChild(dot);
       }
       if (settings.subgoalsEnabled) cluster.appendChild(buildPlusBtn('compact-plus-btn'));
@@ -892,7 +934,11 @@
           if (opts.showCategoryHeaders) {
             const subHeader = document.createElement('div');
             subHeader.className = 'goal-subgroup-header';
-            subHeader.textContent = sg.subcategory.name;
+            const subDot = document.createElement('span');
+            subDot.className = 'category-dot';
+            subDot.style.background = sg.subcategory.color || group.category.color;
+            subHeader.appendChild(subDot);
+            subHeader.appendChild(document.createTextNode(sg.subcategory.name));
             container.appendChild(subHeader);
           }
           sg.goals.forEach(appendGoalRow);
@@ -1254,12 +1300,12 @@
         sortGoals(goals).slice(0, 2).forEach(g => {
           const span = document.createElement('span');
           span.className = 'pv-item' + (g.done ? ' done' : '');
-          const cat = settings.showCategories ? displayCategory(g.category) : null;
-          if (cat) {
+          const catInfo = settings.showCategories ? goalDisplayInfo(g) : null;
+          if (catInfo) {
             const dot = document.createElement('span');
             dot.className = 'pv-dot';
-            dot.style.background = cat.color;
-            dot.title = cat.name;
+            dot.style.background = catInfo.color;
+            dot.title = catInfo.name;
             span.appendChild(dot);
           }
           span.appendChild(document.createTextNode(g.text));
@@ -1284,7 +1330,7 @@
           // in for the day's goal count, so it must always add up to
           // "goals.length", or a goal can silently vanish from it with no
           // "+N" to explain the gap.
-          const dotCats = sortGoals(goals).map(g => findCategory(g.category) || { name: 'Uncategorized', color: '#9AA3B2' });
+          const dotCats = sortGoals(goals).map(goalDotInfo);
           // Cap to one row instead of letting dots wrap — a wrapped second
           // row grows the cell taller than its grid row expects and ends
           // up visually swallowed by the next row of cells underneath it.

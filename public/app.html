@@ -20,6 +20,7 @@
     <div class="categories-block" id="categoriesBlock">
       <div class="category-list" id="categoryList"></div>
       <form class="category-add-form" id="categoryAddForm" hidden>
+        <div class="category-add-label" id="categoryAddLabel">Add category</div>
         <input class="category-add-input" id="categoryAddInput" type="text" placeholder="Category name" maxlength="24">
         <div class="swatch-line">
           <div class="swatch-row" id="swatchRow"></div>
@@ -29,14 +30,6 @@
         <div class="category-add-actions">
           <button type="submit" class="mini-btn-primary">Add</button>
           <button type="button" class="mini-btn-ghost" id="categoryAddCancel">Cancel</button>
-        </div>
-      </form>
-      <form class="subcategory-add-form" id="subcategoryAddForm" hidden>
-        <div class="subcategory-add-label" id="subcategoryAddLabel">Add subcategory</div>
-        <input class="category-add-input" id="subcategoryAddInput" type="text" placeholder="Subcategory name" maxlength="24">
-        <div class="category-add-actions">
-          <button type="submit" class="mini-btn-primary">Add</button>
-          <button type="button" class="mini-btn-ghost" id="subcategoryAddCancel">Cancel</button>
         </div>
       </form>
     </div>
@@ -62,7 +55,6 @@
             <svg class="cd-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
           </button>
           <div class="cd-menu" id="cdMenu" role="listbox" hidden></div>
-          <div class="cd-submenu" id="cdSubMenu" role="listbox" hidden></div>
         </div>
         <div id="significanceGroup">
           <div class="field-label">Significance</div>
