@@ -853,7 +853,10 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
 .main-col {
   flex: 1;
   min-width: 0;
-  padding: 24px 28px 80px;
+  /* Extra left padding (vs. the other sides) so the fixed sidebar-toggle
+     handle, which sits just past the sidebar's edge, has clear room and
+     never overlaps the account row's "Signed in as…" text. */
+  padding: 24px 28px 80px 40px;
 }
 
 .sidebar-section-title {

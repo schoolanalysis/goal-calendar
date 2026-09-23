@@ -38,7 +38,7 @@
   function goalDisplayInfo(g) {
     const cat = displayCategory(g.category);
     if (!cat) return null;
-    const sub = g.subcategory && cat.subcategories && cat.subcategories.find(s => s.id === g.subcategory);
+    const sub = settings.subcategoriesEnabled && g.subcategory && cat.subcategories && cat.subcategories.find(s => s.id === g.subcategory);
     return sub ? { color: sub.color || cat.color, name: sub.name } : { color: cat.color, name: cat.name };
   }
   // Same resolution as goalDisplayInfo, but never returns null — "Any" and
@@ -46,7 +46,7 @@
   // skipped, since the calendar's day-dot cluster needs one dot per goal.
   function goalDotInfo(g) {
     const cat = findCategory(g.category) || { name: 'Uncategorized', color: '#9AA3B2' };
-    const sub = g.subcategory && cat.subcategories && cat.subcategories.find(s => s.id === g.subcategory);
+    const sub = settings.subcategoriesEnabled && g.subcategory && cat.subcategories && cat.subcategories.find(s => s.id === g.subcategory);
     return sub ? { color: sub.color || cat.color, name: sub.name } : { color: cat.color, name: cat.name };
   }
 
@@ -60,7 +60,8 @@
     sidebarCollapsed: false,
     subgoalsEnabled: true,
     subgoalsAutoComplete: false,
-    dayPreviewEnabled: true
+    dayPreviewEnabled: true,
+    subcategoriesEnabled: true
   };
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
@@ -194,32 +195,44 @@
       btn.type = 'button';
       btn.className = 'chip-select';
       btn.innerHTML = '<span class="category-dot" style="background:' + (categoryFilter === cat.id ? '#fff' : cat.color) + '"></span><span>' + cat.name + '</span>';
-      btn.addEventListener('click', () => {
+      wrap.appendChild(btn);
+      // On the whole row, not just the inner button: the row's padding
+      // (over half its height) would otherwise be a dead zone that shows a
+      // pointer cursor but ignores clicks. Expand/remove stop propagation.
+      wrap.addEventListener('click', () => {
         categoryFilter = (categoryFilter === cat.id) ? null : cat.id;
+        // While viewing one category, new goals default to it — otherwise
+        // they'd be tagged with whatever the pickers last held and filtered
+        // straight out of sight.
+        if (categoryFilter) {
+          if (selectedCategoryId !== cat.id) setSelectedCategory(cat.id, null);
+          if (dpCategoryId !== cat.id) { dpCategoryId = cat.id; renderDpCatPicker(); }
+        }
         renderCategoryList();
         renderSidebarGoals();
         renderDayPreview();
         renderAllGoalsModal();
         renderCalendar();
       });
-      wrap.appendChild(btn);
 
       // Always visible — not hover-only — so subcategories are something a
       // student discovers just by looking, not a hidden trick they have to
       // be told about, and so it works the same with a finger as a mouse.
-      const isExpanded = expandedChipCategoryIds.has(cat.id);
-      const expandBtn = document.createElement('button');
-      expandBtn.type = 'button';
-      expandBtn.className = 'chip-expand' + (isExpanded ? ' expanded' : '');
-      expandBtn.setAttribute('aria-label', (isExpanded ? 'Hide' : 'Show') + ' ' + cat.name + ' subcategories');
-      expandBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
-      expandBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (isExpanded) expandedChipCategoryIds.delete(cat.id);
-        else expandedChipCategoryIds.add(cat.id);
-        renderCategoryList();
-      });
-      wrap.appendChild(expandBtn);
+      const isExpanded = settings.subcategoriesEnabled && expandedChipCategoryIds.has(cat.id);
+      if (settings.subcategoriesEnabled) {
+        const expandBtn = document.createElement('button');
+        expandBtn.type = 'button';
+        expandBtn.className = 'chip-expand' + (isExpanded ? ' expanded' : '');
+        expandBtn.setAttribute('aria-label', (isExpanded ? 'Hide' : 'Show') + ' ' + cat.name + ' subcategories');
+        expandBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
+        expandBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (isExpanded) expandedChipCategoryIds.delete(cat.id);
+          else expandedChipCategoryIds.add(cat.id);
+          renderCategoryList();
+        });
+        wrap.appendChild(expandBtn);
+      }
 
       const remove = document.createElement('button');
       remove.type = 'button';
@@ -405,7 +418,7 @@
   function setSelectedCategory(id, subId) {
     const cat = findCategory(id) || allCategories()[0];
     selectedCategoryId = cat.id;
-    selectedSubcategoryId = subId || null;
+    selectedSubcategoryId = settings.subcategoriesEnabled ? (subId || null) : null;
     const sub = selectedSubcategoryId && cat.subcategories && cat.subcategories.find(s => s.id === selectedSubcategoryId);
     cdDot.style.background = (sub && sub.color) || cat.color;
     cdLabel.textContent = cat.name + (sub ? ' — ' + sub.name : '');
@@ -417,7 +430,7 @@
   function renderCategoryDropdown() {
     cdMenu.innerHTML = '';
     allCategories().forEach(cat => {
-      const hasSubs = !!(cat.subcategories && cat.subcategories.length);
+      const hasSubs = settings.subcategoriesEnabled && !!(cat.subcategories && cat.subcategories.length);
       const isExpanded = hasSubs && expandedDropdownCategoryIds.has(cat.id);
       const opt = document.createElement('button');
       opt.type = 'button';
@@ -634,7 +647,7 @@
   // with no subcategory (or one that no longer exists) — general goals
   // render last, same convention as "Any" sorting last at the top level.
   function groupGoalsBySubcategory(goalsInCategory, cat) {
-    const subDefs = (cat && cat.subcategories) || [];
+    const subDefs = settings.subcategoriesEnabled ? ((cat && cat.subcategories) || []) : [];
     if (!subDefs.length) {
       return { general: goalsInCategory.slice().sort((a, b) => (b.stars || 0) - (a.stars || 0)), subGroups: [] };
     }
@@ -1224,23 +1237,37 @@
     });
   });
 
+  // A goal that was just added must be visible — a category filter or a
+  // collapsed group would otherwise hide it, which looks exactly like the
+  // add silently failing.
+  function revealNewGoal(g) {
+    if (categoryFilter && categoryFilter !== g.category) {
+      categoryFilter = null;
+      renderCategoryList();
+    }
+    collapsedGroups.delete('cat:' + g.category);
+    if (g.subcategory) collapsedGroups.delete('sub:' + g.category + ':' + g.subcategory);
+  }
+
   dpAddForm.addEventListener('submit', (e) => {
     e.preventDefault();
     const text = dpAddInput.value.trim();
     if (!text || !previewDay) return;
     const k = keyForDate(previewDay);
     if (!data[k]) data[k] = [];
-    data[k].push({
+    const goal = {
       id: 'g_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
       text: text,
       done: false,
       category: dpCategoryId || allCategories()[0].id,
       stars: dpStarValue
-    });
+    };
+    data[k].push(goal);
     scheduleSave();
     dpAddInput.value = '';
     dpStarValue = 0;
     renderDpStarPicker();
+    revealNewGoal(goal);
     refreshAfterGoalChange();
   });
 
@@ -1259,21 +1286,21 @@
     if (!text) return;
     const k = keyForDate(selectedDay);
     if (!data[k]) data[k] = [];
-    data[k].push({
+    const goal = {
       id: 'g_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
       text: text,
       done: false,
       category: selectedCategoryId || allCategories()[0].id,
       subcategory: selectedSubcategoryId || null,
       stars: starPickerValue
-    });
+    };
+    data[k].push(goal);
     scheduleSave();
     sidebarAddInput.value = '';
     starPickerValue = 0;
     renderStarPicker();
-    renderSidebarGoals();
-    renderAllGoalsModal();
-    renderCalendar();
+    revealNewGoal(goal);
+    refreshAfterGoalChange();
   }
 
   document.getElementById('sidebarAddForm').addEventListener('submit', (e) => {
@@ -1511,6 +1538,9 @@
     document.querySelectorAll('#dayPreviewEnabledOptions .option-btn').forEach(btn => {
       btn.classList.toggle('active', (btn.dataset.boolValue === 'true') === settings.dayPreviewEnabled);
     });
+    document.querySelectorAll('#subcategoriesEnabledOptions .option-btn').forEach(btn => {
+      btn.classList.toggle('active', (btn.dataset.boolValue === 'true') === settings.subcategoriesEnabled);
+    });
   }
 
   function applyVisibilitySettings() {
@@ -1611,6 +1641,29 @@
       saveSettings();
       renderSettingUI();
       if (!settings.dayPreviewEnabled) closeDayPreview();
+    });
+  });
+  document.querySelectorAll('#subcategoriesEnabledOptions .option-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      settings.subcategoriesEnabled = btn.dataset.boolValue === 'true';
+      if (!settings.subcategoriesEnabled) {
+        expandedChipCategoryIds = new Set();
+        subcategoryFormFor = null;
+        if (!categoryAddForm.hidden) categoryAddForm.hidden = true;
+        // Drop any subcategory the add-goal dropdown had selected, so a
+        // stale "Category — Subcategory" label/color doesn't linger, and
+        // the next goal created isn't silently tagged with a subcategory
+        // the UI no longer lets the user see or pick.
+        if (selectedCategoryId) setSelectedCategory(selectedCategoryId, null);
+      }
+      saveSettings();
+      renderSettingUI();
+      renderCategoryList();
+      renderCategoryDropdown();
+      renderSidebarGoals();
+      renderDayPreview();
+      renderAllGoalsModal();
+      renderCalendar();
     });
   });
 

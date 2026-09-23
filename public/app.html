@@ -210,7 +210,13 @@
     </div>
     <div>
       <div class="setting-group-title">Categories</div>
-      <button class="mini-btn-ghost" id="restoreDefaultsBtn" style="width:100%;">Restore default categories</button>
+      <div class="option-row" id="subcategoriesEnabledOptions">
+        <span class="toggle-row-label">Enable subcategories</span>
+        <button class="option-btn" data-bool-value="true">On</button>
+        <button class="option-btn" data-bool-value="false">Off</button>
+      </div>
+      <p class="drawer-footnote" style="margin-top:8px;">When off, subcategories are hidden everywhere — the goal list, the category dropdown, and the sidebar — but nothing is deleted. Turn this back on to see them again.</p>
+      <button class="mini-btn-ghost" id="restoreDefaultsBtn" style="width:100%; margin-top:12px;">Restore default categories</button>
       <p class="drawer-footnote" style="margin-top:8px;">Adds back Academic, Athletic, Extracurricular, and Personal if you've deleted any of them. Anything you've added yourself is left alone.</p>
     </div>
     <p class="drawer-footnote">More settings are on the way.</p>
