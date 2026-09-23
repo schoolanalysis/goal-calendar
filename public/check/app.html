@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Check!</title>
+<link rel="icon" type="image/svg+xml" href="/check/icon.svg">
+<link rel="stylesheet" href="/check/style.css">
+</head>
+<body>
+
+<div class="check-app-shell">
+  <div class="app-topbar">
+    <a class="check-brand-row" href="/check">
+      <img src="/check/icon.svg" alt="">
+      <span class="wordmark">Check!</span>
+    </a>
+    <div class="app-topbar-actions">
+      <span class="streak-badge" id="streakBadge" hidden>🔥 0-day streak</span>
+      <span id="accountLabel">Loading…</span>
+      <button class="btn btn-ghost btn-sm" id="logoutBtn">Log out</button>
+    </div>
+  </div>
+
+  <div id="loadingState" class="loading-state-fun">Loading your list…</div>
+
+  <div id="appContent" hidden>
+    <div class="today-card">
+      <div class="today-card-head">
+        <h2>Today's list</h2>
+        <span class="today-date" id="todayDate"></span>
+      </div>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="hype-text" id="hypeText"></div>
+    </div>
+
+    <div class="checklist" id="checklist"></div>
+  </div>
+
+  <p class="app-footnote">Every checkmark clears out automatically at midnight, your time — your list stays put.</p>
+</div>
+
+<div class="add-item-bar">
+  <form class="add-item-form" id="addItemForm">
+    <input class="add-item-input" id="addItemInput" type="text" placeholder="Add something to check off…" maxlength="200" autocomplete="off">
+    <button class="add-item-btn" type="submit" id="addItemBtn">+ Add</button>
+  </form>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="/check/app.js"></script>
+</body>
+</html>

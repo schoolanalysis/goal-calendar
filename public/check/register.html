@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Create account — Check!</title>
+<link rel="icon" type="image/svg+xml" href="/check/icon.svg">
+<link rel="stylesheet" href="/check/style.css">
+</head>
+<body>
+<div class="fun-auth-page">
+  <div class="blob-field" aria-hidden="true">
+    <span class="blob" style="width:200px;height:200px;background:var(--yellow);top:-40px;right:-60px;"></span>
+    <span class="blob" style="width:180px;height:180px;background:var(--purple);bottom:-40px;left:-40px;animation-delay:1s;"></span>
+  </div>
+
+  <div class="fun-auth-card">
+    <a class="check-brand-row" href="/check">
+      <img src="/check/icon.svg" alt="">
+      <span class="wordmark">Check!</span>
+    </a>
+    <h1>Start your list</h1>
+    <p class="sub">Free, and ready for whatever's on your mind today.</p>
+    <form id="registerForm">
+      <label for="name">Name</label>
+      <input type="text" id="name" name="name" autocomplete="name" maxlength="60">
+
+      <label for="email">Email</label>
+      <input type="email" id="email" name="email" autocomplete="email" required>
+
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" autocomplete="new-password" minlength="8" required>
+
+      <button class="btn btn-solid" type="submit" id="submitBtn">Create account</button>
+      <div class="fun-error-msg" id="errorMsg"></div>
+    </form>
+    <p class="fun-auth-alt">Already have an account? <a href="/check/login.html">Log in</a></p>
+  </div>
+</div>
+
+<script>
+  const form = document.getElementById('registerForm');
+  const errorMsg = document.getElementById('errorMsg');
+  const submitBtn = document.getElementById('submitBtn');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorMsg.classList.remove('visible');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Creating account…';
+
+    try {
+      const res = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: document.getElementById('name').value,
+          email: document.getElementById('email').value,
+          password: document.getElementById('password').value
+        })
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || 'Something went wrong.');
+      window.location.href = '/check/app.html';
+    } catch (err) {
+      errorMsg.textContent = err.message;
+      errorMsg.classList.add('visible');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Create account';
+    }
+  });
+</script>
+</body>
+</html>

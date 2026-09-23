@@ -4,6 +4,14 @@ A small website where anyone can create their own free account and write
 private goals for each day on a calendar. No third-party login — just
 email and password, stored in your own database.
 
+This same server also hosts **Check!** — a single daily checklist, reachable
+at `/check`. Add as many items as you like; every checkmark clears out
+automatically at midnight (in the browser's local time), so the list is
+always ready for a fresh day. It shares the same account system as Goal
+Calendar (one email/password logs into both), so it's covered by everything
+below — no separate setup needed. See `public/check/` for its pages and the
+`/api/checklist*` routes in `server.js` for its backend.
+
 ## How it works
 
 - **Backend:** Node.js + Express
