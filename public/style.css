@@ -1295,6 +1295,23 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
 
 .mini-stars { font-size: 10.5px; color: var(--star-gold); letter-spacing: 1px; }
 
+.time-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  background: var(--bg-elevated);
+  padding: 0 7px 0 5px;
+  border-radius: 999px;
+  white-space: nowrap;
+  line-height: 16px;
+}
+.time-chip svg { width: 10px; height: 10px; flex: none; color: var(--primary); }
+.sidebar-goal-text.done + .sidebar-goal-meta .time-chip { opacity: 0.6; }
+
 .repeat-badge {
   display: inline-flex;
   align-items: center;
@@ -1481,23 +1498,30 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
 .cd-suboption:active { transform: scale(0.97); }
 .cd-suboption .category-dot { width: 8px; height: 8px; }
 
-/* Significance and Repeat side by side, so Repeat reads as another
-   property of the goal being added rather than a separate action. */
-.add-options-row {
+/* Significance, Time and Repeat as label-left / control-right rows: three
+   side by side won't fit the sidebar, and rows read like a settings list —
+   each value visible at a glance, with room to show "9:45 – 10:45 AM". */
+.add-options {
   display: flex;
-  align-items: flex-end;
+  flex-direction: column;
+  gap: 4px;
+  margin: 4px 0 2px;
+}
+.add-option {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-top: 8px;
+  min-height: 34px;
 }
+.add-option .field-label { margin: 0; }
+.add-option .star-picker { padding: 2px 0; }
 
-.repeat-group { display: flex; flex-direction: column; align-items: flex-end; }
-
-.repeat-btn {
+.option-pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin: 3px 0 6px;
+  min-width: 0;
   padding: 5px 11px 5px 9px;
   border-radius: 999px;
   border: 1.5px solid var(--line);
@@ -1510,11 +1534,11 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s cubic-bezier(.4,0,.2,1);
 }
-.repeat-btn svg { width: 13px; height: 13px; flex: none; transition: transform 0.35s cubic-bezier(.4,0,.2,1); }
-.repeat-btn:hover, .repeat-btn.open { border-color: var(--primary); color: var(--primary); }
-.repeat-btn:active { transform: scale(0.95); }
-.repeat-btn.active { background: var(--primary-soft); border-color: var(--primary); color: var(--primary); }
-.repeat-btn.open svg { transform: rotate(180deg); }
+.option-pill svg { width: 13px; height: 13px; flex: none; transition: transform 0.35s cubic-bezier(.4,0,.2,1); }
+.option-pill:hover, .option-pill.open { border-color: var(--primary); color: var(--primary); }
+.option-pill:active { transform: scale(0.95); }
+.option-pill.active { background: var(--primary-soft); border-color: var(--primary); color: var(--primary); }
+#repeatBtn.open svg { transform: rotate(180deg); }
 
 .add-status {
   font-size: 12px;
@@ -1725,6 +1749,7 @@ h1.month-title {
   margin-right: 4px;
   flex: none;
 }
+.pv-time { color: var(--primary); font-weight: 700; margin-right: 4px; white-space: nowrap; }
 
 /* a compact cluster of category-colored dots — one per goal that day,
    same look as the mock calendar shown on the login/register pages */
@@ -2060,7 +2085,7 @@ h1.month-title {
 
 /* ---- "Repeat" popover — a small window beside the add form's Repeat button ---- */
 
-.repeat-pop {
+.pop-window {
   position: fixed;
   z-index: 220;
   width: 276px;
@@ -2073,16 +2098,16 @@ h1.month-title {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  animation: repeatPopIn 0.18s cubic-bezier(.16,1,.3,1);
+  animation: popWindowIn 0.18s cubic-bezier(.16,1,.3,1);
 }
-.repeat-pop[hidden], .repeat-pop [hidden] { display: none !important; }
-@keyframes repeatPopIn {
+.pop-window[hidden], .pop-window [hidden] { display: none !important; }
+@keyframes popWindowIn {
   from { opacity: 0; transform: scale(0.96); }
   to { opacity: 1; transform: scale(1); }
 }
 
 /* The little pointer, aimed back at the button. */
-.repeat-pop::before {
+.pop-window::before {
   content: '';
   position: absolute;
   width: 11px;
@@ -2091,16 +2116,16 @@ h1.month-title {
   border: 1px solid var(--line);
   transform: rotate(45deg);
 }
-.repeat-pop[data-side="right"]::before { left: -6.5px; top: calc(var(--arrow-y) - 5.5px); border-top: none; border-right: none; }
-.repeat-pop[data-side="below"]::before { top: -6.5px; left: calc(var(--arrow-x) - 5.5px); border-right: none; border-bottom: none; }
-.repeat-pop[data-side="above"]::before { bottom: -6.5px; left: calc(var(--arrow-x) - 5.5px); border-left: none; border-top: none; }
+.pop-window[data-side="right"]::before { left: -6.5px; top: calc(var(--arrow-y) - 5.5px); border-top: none; border-right: none; }
+.pop-window[data-side="below"]::before { top: -6.5px; left: calc(var(--arrow-x) - 5.5px); border-right: none; border-bottom: none; }
+.pop-window[data-side="above"]::before { bottom: -6.5px; left: calc(var(--arrow-x) - 5.5px); border-left: none; border-top: none; }
 
-.repeat-pop-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: -4px; }
-.repeat-pop-title { font-family: 'Sora', sans-serif; font-size: 14px; font-weight: 700; color: var(--ink); }
-.repeat-pop-head .icon-btn { font-size: 13px; padding: 4px 7px; }
+.pop-window-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: -4px; }
+.pop-window-title { font-family: 'Sora', sans-serif; font-size: 14px; font-weight: 700; color: var(--ink); }
+.pop-window-head .icon-btn { font-size: 13px; padding: 4px 7px; }
 
-.repeat-section { display: flex; flex-direction: column; gap: 6px; }
-.repeat-label {
+.pop-section { display: flex; flex-direction: column; gap: 6px; }
+.pop-label {
   font-size: 10.5px;
   font-weight: 700;
   text-transform: uppercase;
@@ -2151,12 +2176,45 @@ h1.month-title {
 .repeat-monthday-input { width: 62px; text-align: center; }
 .repeat-until-input { width: 100%; color-scheme: light dark; }
 .repeat-monthday-input:focus, .repeat-until-input:focus { outline: none; border-color: var(--primary); }
-.repeat-hint { font-size: 11.5px; color: var(--ink-soft); }
+.pop-hint { font-size: 11.5px; color: var(--ink-soft); }
+.pop-label-soft { font-weight: 600; text-transform: none; letter-spacing: 0; opacity: 0.8; }
+
+.time-input {
+  width: 100%;
+  font-family: inherit;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1.5px solid var(--line);
+  border-radius: 9px;
+  padding: 7px 10px;
+  color-scheme: light dark;
+}
+.time-input:focus { outline: none; border-color: var(--primary); }
+.time-end-row { display: flex; align-items: center; gap: 6px; }
+.time-end-row .icon-btn { font-size: 13px; padding: 6px 8px; flex: none; }
+.time-add-end {
+  align-self: flex-start;
+  background: none;
+  border: 1.5px dashed var(--line);
+  border-radius: 9px;
+  padding: 7px 12px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease;
+}
+.time-add-end:hover { border-color: var(--primary); color: var(--primary); }
+
+#sortModeOptions { display: grid; grid-template-columns: 1fr 1fr; }
 
 .repeat-duration-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .repeat-chip { font-size: 12px; padding: 5px 10px; border-radius: 999px; }
 
-.repeat-summary {
+.pop-summary {
   font-size: 12.5px;
   color: var(--ink);
   background: var(--primary-soft);
@@ -2164,11 +2222,11 @@ h1.month-title {
   padding: 8px 10px;
   line-height: 1.45;
 }
-.repeat-summary strong { color: var(--primary); }
-.repeat-summary-rule { color: var(--ink-soft); font-size: 12px; }
-.repeat-summary.warn { background: none; border: 1.5px dashed var(--danger); color: var(--danger); }
+.pop-summary strong { color: var(--primary); }
+.pop-summary-sub { color: var(--ink-soft); font-size: 12px; }
+.pop-summary.warn { background: none; border: 1.5px dashed var(--danger); color: var(--danger); }
 
-.repeat-actions { display: flex; justify-content: space-between; gap: 8px; }
+.pop-actions { display: flex; justify-content: space-between; gap: 8px; }
 .mini-btn-primary:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
 .mini-btn-primary:disabled:hover { background: var(--primary); }
 

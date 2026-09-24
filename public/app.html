@@ -56,8 +56,8 @@
           </button>
           <div class="cd-menu" id="cdMenu" role="listbox" hidden></div>
         </div>
-        <div class="add-options-row">
-          <div id="significanceGroup">
+        <div class="add-options">
+          <div class="add-option" id="significanceGroup">
             <div class="field-label">Significance</div>
             <div class="star-picker" id="sidebarStarPicker" data-value="0">
               <button type="button" data-star="1">&#9733;</button>
@@ -67,11 +67,18 @@
               <button type="button" data-star="5">&#9733;</button>
             </div>
           </div>
-          <div class="repeat-group" id="repeatGroup">
+          <div class="add-option" id="timeGroup">
+            <div class="field-label">Time</div>
+            <button type="button" class="option-pill" id="timeBtn" aria-haspopup="dialog" aria-expanded="false">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+              <span id="timeBtnLabel">Off</span>
+            </button>
+          </div>
+          <div class="add-option" id="repeatGroup">
             <div class="field-label">Repeat</div>
-            <button type="button" class="repeat-btn" id="repeatBtn" aria-haspopup="dialog" aria-expanded="false">
+            <button type="button" class="option-pill" id="repeatBtn" aria-haspopup="dialog" aria-expanded="false">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
-              <span id="repeatBtnLabel">Once</span>
+              <span id="repeatBtnLabel">Off</span>
             </button>
           </div>
         </div>
@@ -168,36 +175,60 @@
 <!-- Lives at the body level (not inside the sidebar) so it can float over
      the calendar: the sidebar is position:sticky, which traps anything
      inside it in its own stacking context, beneath the main column. -->
-<div class="repeat-pop" id="repeatPop" role="dialog" aria-label="Repeat this goal" hidden>
-  <div class="repeat-pop-head">
-    <span class="repeat-pop-title">Repeat this goal</span>
+<div class="pop-window" id="repeatPop" role="dialog" aria-label="Repeat this goal" hidden>
+  <div class="pop-window-head">
+    <span class="pop-window-title">Repeat this goal</span>
     <button type="button" class="icon-btn" id="repeatPopClose" aria-label="Close">&#10005;</button>
   </div>
-  <div class="repeat-section">
-    <div class="repeat-label">How often</div>
+  <div class="pop-section">
+    <div class="pop-label">How often</div>
     <div class="repeat-freq-grid" id="repeatFreqGrid"></div>
   </div>
-  <div class="repeat-section" id="repeatWeekdaysSection">
-    <div class="repeat-label">On</div>
+  <div class="pop-section" id="repeatWeekdaysSection">
+    <div class="pop-label">On</div>
     <div class="repeat-weekdays" id="repeatWeekdays"></div>
   </div>
-  <div class="repeat-section" id="repeatMonthDaySection">
-    <div class="repeat-label">On day</div>
+  <div class="pop-section" id="repeatMonthDaySection">
+    <div class="pop-label">On day</div>
     <div class="repeat-monthday-row">
       <input type="number" id="repeatMonthDay" class="repeat-monthday-input" min="1" max="31" inputmode="numeric" aria-label="Day of the month">
       <span>of each month</span>
     </div>
-    <div class="repeat-hint" id="repeatMonthDayHint">Shorter months use their last day.</div>
+    <div class="pop-hint" id="repeatMonthDayHint">Shorter months use their last day.</div>
   </div>
-  <div class="repeat-section">
-    <div class="repeat-label">For</div>
+  <div class="pop-section">
+    <div class="pop-label">For</div>
     <div class="repeat-duration-row" id="repeatDurations"></div>
     <input type="date" id="repeatUntil" class="repeat-until-input" aria-label="Repeat until" hidden>
   </div>
-  <div class="repeat-summary" id="repeatSummary"></div>
-  <div class="repeat-actions">
+  <div class="pop-summary" id="repeatSummary"></div>
+  <div class="pop-actions">
     <button type="button" class="mini-btn-ghost" id="repeatClearBtn">Don't repeat</button>
     <button type="button" class="mini-btn-primary" id="repeatDoneBtn">Done</button>
+  </div>
+</div>
+
+<div class="pop-window" id="timePop" role="dialog" aria-label="Set a time" hidden>
+  <div class="pop-window-head">
+    <span class="pop-window-title">Set a time</span>
+    <button type="button" class="icon-btn" id="timePopClose" aria-label="Close">&#10005;</button>
+  </div>
+  <div class="pop-section">
+    <label class="pop-label" for="timeStartInput">Starts at</label>
+    <input type="time" id="timeStartInput" class="time-input">
+  </div>
+  <div class="pop-section">
+    <div class="pop-label">Ends at <span class="pop-label-soft">· optional</span></div>
+    <button type="button" class="time-add-end" id="timeAddEndBtn">+ Add an end time</button>
+    <div class="time-end-row" id="timeEndRow" hidden>
+      <input type="time" id="timeEndInput" class="time-input" aria-label="Ends at">
+      <button type="button" class="icon-btn" id="timeRemoveEndBtn" aria-label="Remove end time" title="Remove end time">&#10005;</button>
+    </div>
+  </div>
+  <div class="pop-summary" id="timeSummary"></div>
+  <div class="pop-actions">
+    <button type="button" class="mini-btn-ghost" id="timeClearBtn">No time</button>
+    <button type="button" class="mini-btn-primary" id="timeDoneBtn">Done</button>
   </div>
 </div>
 
@@ -228,6 +259,7 @@
       <div class="option-row" id="sortModeOptions">
         <button class="option-btn" data-sort-value="significance">Significance</button>
         <button class="option-btn" data-sort-value="category">Category</button>
+        <button class="option-btn" data-sort-value="time">Time</button>
         <button class="option-btn" data-sort-value="manual">Manual</button>
       </div>
       <p class="drawer-footnote" style="margin-top:8px;">Manual order can be changed with the up/down arrows on each goal (while viewing "All goals").</p>

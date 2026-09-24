@@ -106,6 +106,9 @@
   // work on them unchanged.
   let series = [];
   let repeatDraft = null; // repeat settings for the next goal added from the sidebar, or null for "once"
+  // Time for the next goal added from the sidebar: { start: 'HH:MM', end: 'HH:MM' | null }, or null.
+  // Goals store it as time / endTime (24-hour 'HH:MM', so plain string order is time order).
+  let timeDraft = null;
 
   function pad2(n) { return String(n).padStart(2, '0'); }
   function keyFor(y, m, d) { return y + '-' + pad2(m + 1) + '-' + pad2(d); }
@@ -146,6 +149,7 @@
   const WEEKDAY_TWO = ['Su','Mo','Tu','We','Th','Fr','Sa'];
 
   const REPEAT_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>';
+  const CLOCK_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
   const REPEAT_FREQS = [
     { id: 'daily', label: 'Every day' },
     { id: 'alternate', label: 'Every other day' },
@@ -643,12 +647,44 @@
     return idx === -1 ? allCategories().length : idx;
   }
 
+  // ---------- goal times ----------
+  function formatTime(hhmm) {
+    const [h, m] = hhmm.split(':').map(Number);
+    return new Date(2000, 0, 1, h, m).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  }
+  // "9:45 – 10:45 AM" where the locale supports compact ranges.
+  function formatTimeRange(start, end) {
+    if (!end) return formatTime(start);
+    const toDate = t => { const [h, m] = t.split(':').map(Number); return new Date(2000, 0, 1, h, m); };
+    const fmt = new Intl.DateTimeFormat([], { hour: 'numeric', minute: '2-digit' });
+    return fmt.formatRange ? fmt.formatRange(toDate(start), toDate(end)) : formatTime(start) + ' – ' + formatTime(end);
+  }
+  function timeToMinutes(t) { const [h, m] = t.split(':').map(Number); return h * 60 + m; }
+  function minutesToTime(mins) { return pad2(Math.floor(mins / 60)) + ':' + pad2(mins % 60); }
+  function formatDuration(mins) {
+    const h = Math.floor(mins / 60), m = mins % 60;
+    return h ? h + ' hr' + (m ? ' ' + m + ' min' : '') : m + ' min';
+  }
+  // " at 9:45 AM" / ", 9:45 – 10:45 AM" — appended to a date or repeat description.
+  function timeSuffix(start, end) {
+    if (!start) return '';
+    return end ? ', ' + formatTimeRange(start, end) : ' at ' + formatTime(start);
+  }
+  // Earlier times first; goals without a time after every timed one.
+  function compareTime(a, b) {
+    if (a.time && b.time) return a.time < b.time ? -1 : a.time > b.time ? 1 : 0;
+    return a.time ? -1 : b.time ? 1 : 0;
+  }
+  function compareInGroup(a, b) { return (b.stars || 0) - (a.stars || 0) || compareTime(a, b); }
+
   function sortGoals(list) {
     const withIndex = list.map((g, i) => ({ g, i }));
     if (settings.sortMode === 'significance') {
-      withIndex.sort((a, b) => (b.g.stars || 0) - (a.g.stars || 0) || a.i - b.i);
+      withIndex.sort((a, b) => compareInGroup(a.g, b.g) || a.i - b.i);
     } else if (settings.sortMode === 'category') {
-      withIndex.sort((a, b) => categoryRank(a.g.category) - categoryRank(b.g.category) || a.i - b.i);
+      withIndex.sort((a, b) => categoryRank(a.g.category) - categoryRank(b.g.category) || compareInGroup(a.g, b.g) || a.i - b.i);
+    } else if (settings.sortMode === 'time') {
+      withIndex.sort((a, b) => compareTime(a.g, b.g) || (b.g.stars || 0) - (a.g.stars || 0) || a.i - b.i);
     }
     // 'manual' keeps the underlying array order as-is
     return withIndex.map(x => x.g);
@@ -667,7 +703,7 @@
     order.sort((a, b) => categoryRank(a) - categoryRank(b));
     return order.map(catId => ({
       category: findCategory(catId) || { id: catId, name: 'Uncategorized', color: '#9AA3B2' },
-      goals: byCategory.get(catId).slice().sort((a, b) => (b.stars || 0) - (a.stars || 0))
+      goals: byCategory.get(catId).slice().sort(compareInGroup)
     }));
   }
 
@@ -678,7 +714,7 @@
   function groupGoalsBySubcategory(goalsInCategory, cat) {
     const subDefs = settings.subcategoriesEnabled ? ((cat && cat.subcategories) || []) : [];
     if (!subDefs.length) {
-      return { general: goalsInCategory.slice().sort((a, b) => (b.stars || 0) - (a.stars || 0)), subGroups: [] };
+      return { general: goalsInCategory.slice().sort(compareInGroup), subGroups: [] };
     }
     const bySub = new Map();
     const general = [];
@@ -692,8 +728,8 @@
     });
     const subGroups = subDefs
       .filter(s => bySub.has(s.id))
-      .map(s => ({ subcategory: s, goals: bySub.get(s.id).slice().sort((a, b) => (b.stars || 0) - (a.stars || 0)) }));
-    general.sort((a, b) => (b.stars || 0) - (a.stars || 0));
+      .map(s => ({ subcategory: s, goals: bySub.get(s.id).slice().sort(compareInGroup) }));
+    general.sort(compareInGroup);
     return { general, subGroups };
   }
 
@@ -756,6 +792,15 @@
 
     const meta = document.createElement('div');
     meta.className = 'sidebar-goal-meta';
+    if (g.time) {
+      const chip = document.createElement('span');
+      chip.className = 'time-chip';
+      chip.innerHTML = CLOCK_ICON_SVG;
+      const chipText = document.createElement('span');
+      chipText.textContent = formatTimeRange(g.time, g.endTime);
+      chip.appendChild(chipText);
+      meta.appendChild(chip);
+    }
     const catInfo = settings.showCategories ? goalDisplayInfo(g) : null;
     if (catInfo && !opts.dotOnlyCategory) {
       const tag = document.createElement('span');
@@ -774,7 +819,7 @@
       const s = series.find(x => x.id === g.seriesId);
       const badge = document.createElement('span');
       badge.className = 'repeat-badge';
-      badge.title = s ? describeRule(s) + ' · ' + formatRange(dateFromKey(s.start), dateFromKey(s.end)) : 'Repeating goal';
+      badge.title = s ? describeRule(s) + timeSuffix(s.time, s.endTime) + ' · ' + formatRange(dateFromKey(s.start), dateFromKey(s.end)) : 'Repeating goal';
       badge.innerHTML = REPEAT_ICON_SVG;
       const badgeText = document.createElement('span');
       badgeText.textContent = s ? shortRuleLabel(s) : 'Repeats';
@@ -1326,8 +1371,9 @@
   function addGoalToSelectedDay() {
     const text = sidebarAddInput.value.trim();
     if (!text) return;
-    // Pressing Enter with the Repeat popover still open counts as keeping it.
+    // Pressing Enter with a popover still open counts as keeping its choices.
     closeRepeatPop(true);
+    closeTimePop(true);
     if (repeatDraft && settings.repeatingEnabled) {
       addRepeatingGoal(text);
       return;
@@ -1342,13 +1388,30 @@
       subcategory: selectedSubcategoryId || null,
       stars: starPickerValue
     };
+    applyTimeDraft(goal);
     data[k].push(goal);
     scheduleSave();
+    resetAddForm();
+    revealNewGoal(goal);
+    refreshAfterGoalChange();
+  }
+
+  function applyTimeDraft(target) {
+    if (!timeDraft) return;
+    target.time = timeDraft.start;
+    if (timeDraft.end) target.endTime = timeDraft.end;
+  }
+
+  // Per-goal choices reset after each add; the category stays, since several
+  // goals in a row often share one.
+  function resetAddForm() {
     sidebarAddInput.value = '';
     starPickerValue = 0;
     renderStarPicker();
-    revealNewGoal(goal);
-    refreshAfterGoalChange();
+    repeatDraft = null;
+    renderRepeatBtn();
+    timeDraft = null;
+    renderTimeBtn();
   }
 
   document.getElementById('sidebarAddForm').addEventListener('submit', (e) => {
@@ -1475,13 +1538,13 @@
   function renderRepeatBtn() {
     repeatBtn.classList.toggle('active', !!repeatDraft);
     if (!repeatDraft) {
-      repeatBtnLabel.textContent = 'Once';
+      repeatBtnLabel.textContent = 'Off';
       repeatBtn.title = 'Repeat this goal on other days';
       return;
     }
     const plan = draftPlan(repeatDraft);
     repeatBtnLabel.textContent = shortRuleLabel(repeatDraft) + ' · ' + plan.keys.length + '×';
-    repeatBtn.title = describeRule(repeatDraft) + ', ' + plan.keys.length + ' times';
+    repeatBtn.title = describeRule(repeatDraft) + (timeDraft ? timeSuffix(timeDraft.start, timeDraft.end) : '') + ', ' + plan.keys.length + ' times';
   }
 
   function addRepeatingGoal(text) {
@@ -1502,6 +1565,7 @@
       start: plan.keys[0],
       end: plan.keys[plan.keys.length - 1]
     };
+    applyTimeDraft(s);
     series.push(s);
     let first = null;
     plan.keys.forEach((k, i) => {
@@ -1514,21 +1578,18 @@
         stars: s.stars,
         seriesId: s.id
       };
+      applyTimeDraft(g);
       if (!data[k]) data[k] = [];
       data[k].push(g);
       if (!first) first = g;
     });
     scheduleSave();
-    sidebarAddInput.value = '';
-    starPickerValue = 0;
-    renderStarPicker();
-    repeatDraft = null;
-    renderRepeatBtn();
+    resetAddForm();
     revealNewGoal(first);
     refreshAfterGoalChange();
     renderRepeatingModal();
     showAddStatus('Added ' + plan.keys.length + (plan.keys.length === 1 ? ' time' : ' times') +
-      ' (' + describeRule(s) + '), starting ' + shortDateWithDay(dateFromKey(plan.keys[0])) + '.');
+      ' (' + describeRule(s) + timeSuffix(s.time, s.endTime) + '), starting ' + shortDateWithDay(dateFromKey(plan.keys[0])) + '.');
   }
 
   // ---------- repeating goals: the "Repeat" popover ----------
@@ -1651,8 +1712,9 @@
       repeatSummary.appendChild(count);
       repeatSummary.appendChild(document.createTextNode(' · ' + formatRange(dateFromKey(plan.keys[0]), dateFromKey(plan.keys[plan.keys.length - 1]))));
       const rule = document.createElement('div');
-      rule.className = 'repeat-summary-rule';
-      rule.textContent = describeRule(e) + ', starting ' + shortDateWithDay(dateFromKey(plan.keys[0]));
+      rule.className = 'pop-summary-sub';
+      rule.textContent = describeRule(e) + (timeDraft ? timeSuffix(timeDraft.start, timeDraft.end) : '') +
+        ', starting ' + shortDateWithDay(dateFromKey(plan.keys[0]));
       repeatSummary.appendChild(rule);
     }
     repeatDoneBtn.disabled = !plan.keys.length;
@@ -1661,10 +1723,13 @@
 
   // To the right of the Repeat button when there's room (desktop), else
   // below or above it (mobile, where the sidebar spans the full width).
-  function positionRepeatPop() {
-    if (repeatPop.hidden) return;
-    const r = repeatBtn.getBoundingClientRect();
-    const pw = repeatPop.offsetWidth, ph = repeatPop.offsetHeight;
+  function positionRepeatPop() { positionPopover(repeatPop, repeatBtn); }
+
+  // Places a small popover window beside the button that opened it.
+  function positionPopover(pop, btn) {
+    if (pop.hidden) return;
+    const r = btn.getBoundingClientRect();
+    const pw = pop.offsetWidth, ph = pop.offsetHeight;
     const gap = 12, edge = 8;
     let left, top, side;
     if (r.right + gap + pw <= window.innerWidth - edge) {
@@ -1675,21 +1740,21 @@
       side = 'below';
       left = r.right - pw;
       top = r.bottom + gap;
-      // Above clears the "Repeat" label too, not just the button.
-      const groupTop = repeatBtn.parentElement.getBoundingClientRect().top;
-      if (top + ph > window.innerHeight - edge && groupTop - gap - ph >= edge) {
+      // Above clears the button's whole row (its label too), not just the button.
+      const rowTop = btn.parentElement.getBoundingClientRect().top;
+      if (top + ph > window.innerHeight - edge && rowTop - gap - ph >= edge) {
         side = 'above';
-        top = groupTop - gap - ph;
+        top = rowTop - gap - ph;
       }
     }
     left = Math.max(edge, Math.min(left, window.innerWidth - pw - edge));
     top = Math.max(edge, Math.min(top, window.innerHeight - ph - edge));
-    repeatPop.style.left = left + 'px';
-    repeatPop.style.top = top + 'px';
-    repeatPop.dataset.side = side;
+    pop.style.left = left + 'px';
+    pop.style.top = top + 'px';
+    pop.dataset.side = side;
     // Keep the little pointer aimed at the button even after clamping.
-    repeatPop.style.setProperty('--arrow-y', Math.max(16, Math.min(ph - 16, r.top + r.height / 2 - top)) + 'px');
-    repeatPop.style.setProperty('--arrow-x', Math.max(16, Math.min(pw - 16, r.left + r.width / 2 - left)) + 'px');
+    pop.style.setProperty('--arrow-y', Math.max(16, Math.min(ph - 16, r.top + r.height / 2 - top)) + 'px');
+    pop.style.setProperty('--arrow-x', Math.max(16, Math.min(pw - 16, r.left + r.width / 2 - left)) + 'px');
   }
 
   // intent: opened deliberately to set up a repeat (from the Repeating
@@ -1744,6 +1809,152 @@
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeRepeatPop(false); });
   window.addEventListener('resize', positionRepeatPop);
   document.addEventListener('scroll', positionRepeatPop, true);
+
+  // ---------- goal times: the "Time" popover ----------
+  const timeBtn = document.getElementById('timeBtn');
+  const timeBtnLabel = document.getElementById('timeBtnLabel');
+  const timePop = document.getElementById('timePop');
+  const timeStartInput = document.getElementById('timeStartInput');
+  const timeEndInput = document.getElementById('timeEndInput');
+  const timeAddEndBtn = document.getElementById('timeAddEndBtn');
+  const timeEndRow = document.getElementById('timeEndRow');
+  const timeSummary = document.getElementById('timeSummary');
+  const timeDoneBtn = document.getElementById('timeDoneBtn');
+  const LAST_MINUTE = 23 * 60 + 59;
+  let timeEdit = null; // { start, end } working copy while the popover is open
+  let timeEditDirty = false; // same keep-on-click-away rule as the Repeat popover
+
+  function renderTimeBtn() {
+    timeBtn.classList.toggle('active', !!timeDraft);
+    timeBtnLabel.textContent = timeDraft ? formatTimeRange(timeDraft.start, timeDraft.end) : 'Off';
+    timeBtn.title = timeDraft ? 'Change the time' : 'Give this goal a time of day';
+    renderRepeatBtn(); // its tooltip mentions the time
+  }
+
+  function timeEditValid(e) { return !!e.start && (!e.end || e.end > e.start); }
+
+  // The next half hour when timing something for today, else 9:00 AM.
+  function defaultStartTime() {
+    const now = new Date();
+    if (sameDay(selectedDay, now)) {
+      const next = Math.ceil((now.getHours() * 60 + now.getMinutes() + 1) / 30) * 30;
+      if (next <= 23 * 60 + 30) return minutesToTime(next);
+    }
+    return '09:00';
+  }
+
+  // fromInput: the change came from one of the time fields, so leave them be.
+  function syncTimePop(fromInput) {
+    const e = timeEdit;
+    if (!fromInput) {
+      timeStartInput.value = e.start || '';
+      timeEndInput.value = e.end || '';
+    }
+    timeAddEndBtn.hidden = !!e.end;
+    timeEndRow.hidden = !e.end;
+
+    const valid = timeEditValid(e);
+    timeSummary.innerHTML = '';
+    timeSummary.classList.toggle('warn', !valid);
+    if (!e.start) {
+      timeSummary.textContent = 'Pick a start time.';
+    } else if (!valid) {
+      timeSummary.textContent = 'The end time is before the start time.';
+    } else {
+      const strong = document.createElement('strong');
+      strong.textContent = formatTimeRange(e.start, e.end);
+      timeSummary.appendChild(strong);
+      if (e.end) timeSummary.appendChild(document.createTextNode(' · ' + formatDuration(timeToMinutes(e.end) - timeToMinutes(e.start))));
+      const sub = document.createElement('div');
+      sub.className = 'pop-summary-sub';
+      const when = repeatDraft ? describeRule(repeatDraft)
+        : sameDay(selectedDay, new Date()) ? 'Today' : shortDateWithDay(selectedDay);
+      sub.textContent = when + timeSuffix(e.start, e.end);
+      timeSummary.appendChild(sub);
+    }
+    timeDoneBtn.disabled = !valid;
+    positionPopover(timePop, timeBtn);
+  }
+
+  function openTimePop() {
+    timeEdit = timeDraft ? { start: timeDraft.start, end: timeDraft.end } : { start: defaultStartTime(), end: null };
+    timeEditDirty = !!timeDraft;
+    timePop.hidden = false;
+    timeBtn.classList.add('open');
+    timeBtn.setAttribute('aria-expanded', 'true');
+    syncTimePop();
+    timeStartInput.focus(); // ready to type, e.g. "945a"
+  }
+
+  function closeTimePop(commit) {
+    if (timePop.hidden) return;
+    if (commit && timeEditDirty && timeEditValid(timeEdit)) timeDraft = { start: timeEdit.start, end: timeEdit.end };
+    timePop.hidden = true;
+    timeEdit = null;
+    timeBtn.classList.remove('open');
+    timeBtn.setAttribute('aria-expanded', 'false');
+    renderTimeBtn();
+  }
+
+  timeStartInput.addEventListener('input', () => {
+    if (!timeStartInput.value) return;
+    // Moving the start carries the end along, keeping the same length.
+    if (timeEdit.end && timeEdit.start && timeEdit.end > timeEdit.start) {
+      const length = timeToMinutes(timeEdit.end) - timeToMinutes(timeEdit.start);
+      timeEdit.end = minutesToTime(Math.min(timeToMinutes(timeStartInput.value) + length, LAST_MINUTE));
+      timeEndInput.value = timeEdit.end;
+    }
+    timeEdit.start = timeStartInput.value;
+    timeEditDirty = true;
+    syncTimePop(true);
+  });
+  timeEndInput.addEventListener('input', () => {
+    if (!timeEndInput.value) return;
+    timeEdit.end = timeEndInput.value;
+    timeEditDirty = true;
+    syncTimePop(true);
+  });
+  timeAddEndBtn.addEventListener('click', () => {
+    const start = timeEdit.start || defaultStartTime();
+    timeEdit.end = minutesToTime(Math.min(timeToMinutes(start) + 60, LAST_MINUTE));
+    timeEditDirty = true;
+    syncTimePop();
+    timeEndInput.focus();
+  });
+  document.getElementById('timeRemoveEndBtn').addEventListener('click', () => {
+    timeEdit.end = null;
+    timeEditDirty = true;
+    syncTimePop();
+  });
+
+  timeBtn.addEventListener('click', () => {
+    if (timePop.hidden) openTimePop(); else closeTimePop(true);
+  });
+  document.getElementById('timePopClose').addEventListener('click', () => closeTimePop(false));
+  timeDoneBtn.addEventListener('click', () => {
+    timeEditDirty = true;
+    closeTimePop(true);
+    if (!sidebarAddInput.value.trim()) sidebarAddInput.focus();
+  });
+  document.getElementById('timeClearBtn').addEventListener('click', () => {
+    timeDraft = null;
+    closeTimePop(false);
+  });
+  timePop.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.tagName === 'INPUT' && !timeDoneBtn.disabled) {
+      e.preventDefault();
+      timeDoneBtn.click();
+    }
+  });
+  document.addEventListener('click', (e) => {
+    if (timePop.hidden) return;
+    const path = e.composedPath();
+    if (path.includes(timePop) || path.includes(timeBtn)) return;
+    closeTimePop(true);
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeTimePop(false); });
+  window.addEventListener('resize', () => positionPopover(timePop, timeBtn));
+  document.addEventListener('scroll', () => positionPopover(timePop, timeBtn), true);
 
   // ---------- repeating goals: the "Repeating" section ----------
   const repeatingBtn = document.getElementById('repeatingBtn');
@@ -1837,7 +2048,7 @@
     const rule = document.createElement('div');
     rule.className = 'repeat-card-rule';
     rule.innerHTML = REPEAT_ICON_SVG;
-    rule.appendChild(document.createTextNode(describeRule(s) + ' · ' + formatRange(dateFromKey(s.start), dateFromKey(s.end))));
+    rule.appendChild(document.createTextNode(describeRule(s) + timeSuffix(s.time, s.endTime) + ' · ' + formatRange(dateFromKey(s.start), dateFromKey(s.end))));
     card.appendChild(rule);
 
     const bar = document.createElement('div');
@@ -2048,6 +2259,12 @@
             dot.style.background = catInfo.color;
             dot.title = catInfo.name;
             span.appendChild(dot);
+          }
+          if (g.time) {
+            const t = document.createElement('span');
+            t.className = 'pv-time';
+            t.textContent = formatTime(g.time);
+            span.appendChild(t);
           }
           span.appendChild(document.createTextNode(g.text));
           preview.appendChild(span);
