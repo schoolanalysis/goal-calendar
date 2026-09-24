@@ -61,7 +61,8 @@
     subgoalsEnabled: true,
     subgoalsAutoComplete: false,
     dayPreviewEnabled: true,
-    subcategoriesEnabled: true
+    subcategoriesEnabled: true,
+    repeatingEnabled: true
   };
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
@@ -99,10 +100,18 @@
   let justCompletedId = null; // goal/subgoal id to play a completion "pop" on, for one render pass
   let dpStarValue = 0;
   let dpCategoryId = null;
+  // Repeating-goal definitions (persisted as data.__series). Each one's
+  // occurrences are stored as ordinary goals on their dates, tagged with
+  // seriesId, so checking off, subgoals, filters and calendar dots all
+  // work on them unchanged.
+  let series = [];
+  let repeatDraft = null; // repeat settings for the next goal added from the sidebar, or null for "once"
 
   function pad2(n) { return String(n).padStart(2, '0'); }
   function keyFor(y, m, d) { return y + '-' + pad2(m + 1) + '-' + pad2(d); }
   function keyForDate(dateObj) { return keyFor(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate()); }
+  // Real day entries, as opposed to metadata keys like __categories/__series.
+  function isDateKey(k) { return /^\d{4}-\d{2}-\d{2}$/.test(k); }
   function sameDay(a, b) {
     return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
   }
@@ -112,12 +121,14 @@
     saveTimer = setTimeout(async () => {
       try {
         data.__categories = categories;
+        data.__series = series;
         const res = await fetch('/api/goals', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ goals: data })
         });
         if (res.status === 401) window.location.href = '/login.html';
+        else if (!res.ok) console.error('Could not save goals: HTTP ' + res.status);
       } catch (e) {
         console.error('Could not save goals', e);
       }
@@ -132,6 +143,24 @@
   const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const WEEKDAY_FULL = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   const WEEKDAY_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const WEEKDAY_TWO = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+
+  const REPEAT_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>';
+  const REPEAT_FREQS = [
+    { id: 'daily', label: 'Every day' },
+    { id: 'alternate', label: 'Every other day' },
+    { id: 'weekly', label: 'Every week' },
+    { id: 'monthly', label: 'Every month' }
+  ];
+  const REPEAT_DURATIONS = [
+    { id: '1w', label: '1 week' },
+    { id: '1m', label: '1 month' },
+    { id: '3m', label: '3 months' },
+    { id: '6m', label: '6 months' },
+    { id: 'custom', label: 'Until…' }
+  ];
+  // Occurrences are stored as real goals, so cap how far one repeat reaches.
+  const REPEAT_MAX_DAYS = 366;
 
   // ---------- elements ----------
   const monthLabel = document.getElementById('monthLabel');
@@ -741,6 +770,17 @@
       stars.innerHTML = starsHtml(g.stars);
       meta.appendChild(stars);
     }
+    if (g.seriesId && settings.repeatingEnabled) {
+      const s = series.find(x => x.id === g.seriesId);
+      const badge = document.createElement('span');
+      badge.className = 'repeat-badge';
+      badge.title = s ? describeRule(s) + ' · ' + formatRange(dateFromKey(s.start), dateFromKey(s.end)) : 'Repeating goal';
+      badge.innerHTML = REPEAT_ICON_SVG;
+      const badgeText = document.createElement('span');
+      badgeText.textContent = s ? shortRuleLabel(s) : 'Repeats';
+      badge.appendChild(badgeText);
+      meta.appendChild(badge);
+    }
     if (meta.childNodes.length) main.appendChild(meta);
 
     if (settings.subgoalsEnabled && g.subgoals && g.subgoals.length) {
@@ -906,6 +946,8 @@
     sidebarDayLabel.textContent = isToday
       ? 'Today'
       : WEEKDAY_FULL[selectedDay.getDay()] + ', ' + MONTH_NAMES[selectedDay.getMonth()] + ' ' + selectedDay.getDate();
+    // A repeat starts on the selected day, so its count follows the day.
+    renderRepeatBtn();
   }
 
   // A small circular chevron for a goal-group/subgroup header, on its
@@ -1058,7 +1100,7 @@
     allGoalsBody.innerHTML = '';
 
     const dateKeys = Object.keys(data)
-      .filter(k => k !== '__categories' && Array.isArray(data[k]) && data[k].length)
+      .filter(k => isDateKey(k) && Array.isArray(data[k]) && data[k].length)
       .sort();
 
     let total = 0;
@@ -1284,6 +1326,12 @@
   function addGoalToSelectedDay() {
     const text = sidebarAddInput.value.trim();
     if (!text) return;
+    // Pressing Enter with the Repeat popover still open counts as keeping it.
+    closeRepeatPop(true);
+    if (repeatDraft && settings.repeatingEnabled) {
+      addRepeatingGoal(text);
+      return;
+    }
     const k = keyForDate(selectedDay);
     if (!data[k]) data[k] = [];
     const goal = {
@@ -1307,6 +1355,615 @@
     e.preventDefault();
     addGoalToSelectedDay();
   });
+
+  const addStatus = document.getElementById('addStatus');
+  let addStatusTimer = null;
+  function showAddStatus(msg, isError) {
+    addStatus.textContent = msg;
+    addStatus.classList.toggle('error', !!isError);
+    addStatus.classList.add('show');
+    clearTimeout(addStatusTimer);
+    addStatusTimer = setTimeout(() => addStatus.classList.remove('show'), 6000);
+  }
+
+  // ---------- repeating goals: dates & wording ----------
+  function addDays(d, n) {
+    const r = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    r.setDate(r.getDate() + n);
+    return r;
+  }
+  // Same day-of-month n months later, clamped to that month's last day
+  // (Jan 31 + 1 month is Feb 28/29, not Mar 3).
+  function addMonths(d, n) {
+    const y = d.getFullYear(), m = d.getMonth() + n;
+    const last = new Date(y, m + 1, 0).getDate();
+    return new Date(y, m, Math.min(d.getDate(), last));
+  }
+  function shortDate(d) { return MONTH_NAMES[d.getMonth()].slice(0, 3) + ' ' + d.getDate(); }
+  function shortDateWithDay(d) { return WEEKDAY_SHORT[d.getDay()] + ', ' + shortDate(d); }
+  function formatRange(a, b) {
+    const thisYear = new Date().getFullYear();
+    const plain = a.getFullYear() === thisYear && b.getFullYear() === thisYear;
+    const fmt = d => shortDate(d) + (plain ? '' : ', ' + d.getFullYear());
+    return sameDay(a, b) ? fmt(a) : fmt(a) + ' – ' + fmt(b);
+  }
+  function ordinal(n) {
+    const s = ['th', 'st', 'nd', 'rd'], v = n % 100;
+    return n + (s[(v - 20) % 10] || s[v] || s[0]);
+  }
+  function orderedWeekdays(days) {
+    return days.slice().sort((a, b) => ((a - settings.weekStart + 7) % 7) - ((b - settings.weekStart + 7) % 7));
+  }
+  function joinWords(words) {
+    return words.length <= 1 ? words.join('') : words.slice(0, -1).join(', ') + ' & ' + words[words.length - 1];
+  }
+  function describeRule(rule) {
+    if (rule.freq === 'daily') return 'Every day';
+    if (rule.freq === 'alternate') return 'Every other day';
+    if (rule.freq === 'weekly') {
+      if (rule.weekdays.length === 7) return 'Every day';
+      return 'Every ' + joinWords(orderedWeekdays(rule.weekdays).map(d => WEEKDAY_SHORT[d]));
+    }
+    return 'Monthly on the ' + ordinal(rule.monthDay);
+  }
+  function shortRuleLabel(rule) {
+    if (rule.freq === 'daily') return 'Daily';
+    if (rule.freq === 'alternate') return 'Every 2 days';
+    if (rule.freq === 'weekly') {
+      if (rule.weekdays.length === 7) return 'Daily';
+      if (rule.weekdays.length <= 2) return orderedWeekdays(rule.weekdays).map(d => WEEKDAY_SHORT[d]).join(', ');
+      return rule.weekdays.length + '× a week';
+    }
+    return 'Monthly';
+  }
+
+  // Every date key from start to end (inclusive) that the rule lands on.
+  function occurrenceKeys(rule, start, end) {
+    const keys = [];
+    if (rule.freq === 'monthly') {
+      for (let i = 0; ; i++) {
+        const y = start.getFullYear(), m = start.getMonth() + i;
+        const last = new Date(y, m + 1, 0).getDate();
+        const d = new Date(y, m, Math.min(rule.monthDay, last));
+        if (d > end) break;
+        if (d >= start) keys.push(keyForDate(d));
+      }
+      return keys;
+    }
+    const step = rule.freq === 'alternate' ? 2 : 1;
+    for (let d = addDays(start, 0); d <= end; d = addDays(d, step)) {
+      if (rule.freq === 'weekly' && !rule.weekdays.includes(d.getDay())) continue;
+      keys.push(keyForDate(d));
+    }
+    return keys;
+  }
+
+  // ---------- repeating goals: the pending repeat for the add form ----------
+  function repeatStartDay() { return new Date(selectedDay.getFullYear(), selectedDay.getMonth(), selectedDay.getDate()); }
+
+  function defaultRepeatDraft() {
+    const start = repeatStartDay();
+    return {
+      freq: 'daily',
+      weekdays: [start.getDay()],
+      monthDay: start.getDate(),
+      duration: '1m',
+      until: keyForDate(addDays(addMonths(start, 1), -1)),
+      durationTouched: false
+    };
+  }
+
+  function draftEnd(draft, start) {
+    let end;
+    if (draft.duration === 'custom') end = draft.until ? dateFromKey(draft.until) : start;
+    else if (draft.duration === '1w') end = addDays(start, 6);
+    else end = addDays(addMonths(start, { '1m': 1, '3m': 3, '6m': 6 }[draft.duration]), -1);
+    const max = addDays(start, REPEAT_MAX_DAYS - 1);
+    return end > max ? max : end;
+  }
+
+  // Starts on the sidebar's selected day — the day the goal is being added to.
+  function draftPlan(draft) {
+    const start = repeatStartDay();
+    const end = draftEnd(draft, start);
+    return { start, end, keys: end < start ? [] : occurrenceKeys(draft, start, end) };
+  }
+
+  const repeatBtn = document.getElementById('repeatBtn');
+  const repeatBtnLabel = document.getElementById('repeatBtnLabel');
+
+  function renderRepeatBtn() {
+    repeatBtn.classList.toggle('active', !!repeatDraft);
+    if (!repeatDraft) {
+      repeatBtnLabel.textContent = 'Once';
+      repeatBtn.title = 'Repeat this goal on other days';
+      return;
+    }
+    const plan = draftPlan(repeatDraft);
+    repeatBtnLabel.textContent = shortRuleLabel(repeatDraft) + ' · ' + plan.keys.length + '×';
+    repeatBtn.title = describeRule(repeatDraft) + ', ' + plan.keys.length + ' times';
+  }
+
+  function addRepeatingGoal(text) {
+    const plan = draftPlan(repeatDraft);
+    if (!plan.keys.length) {
+      showAddStatus('No days in that range match the repeat. Pick more days or a longer time.', true);
+      return;
+    }
+    const s = {
+      id: 'rs_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+      text: text,
+      category: selectedCategoryId || allCategories()[0].id,
+      subcategory: selectedSubcategoryId || null,
+      stars: starPickerValue,
+      freq: repeatDraft.freq,
+      weekdays: repeatDraft.freq === 'weekly' ? repeatDraft.weekdays.slice() : [],
+      monthDay: repeatDraft.monthDay,
+      start: plan.keys[0],
+      end: plan.keys[plan.keys.length - 1]
+    };
+    series.push(s);
+    let first = null;
+    plan.keys.forEach((k, i) => {
+      const g = {
+        id: 'g_' + Date.now() + '_' + i + '_' + Math.random().toString(36).slice(2, 7),
+        text: text,
+        done: false,
+        category: s.category,
+        subcategory: s.subcategory,
+        stars: s.stars,
+        seriesId: s.id
+      };
+      if (!data[k]) data[k] = [];
+      data[k].push(g);
+      if (!first) first = g;
+    });
+    scheduleSave();
+    sidebarAddInput.value = '';
+    starPickerValue = 0;
+    renderStarPicker();
+    repeatDraft = null;
+    renderRepeatBtn();
+    revealNewGoal(first);
+    refreshAfterGoalChange();
+    renderRepeatingModal();
+    showAddStatus('Added ' + plan.keys.length + (plan.keys.length === 1 ? ' time' : ' times') +
+      ' (' + describeRule(s) + '), starting ' + shortDateWithDay(dateFromKey(plan.keys[0])) + '.');
+  }
+
+  // ---------- repeating goals: the "Repeat" popover ----------
+  const repeatPop = document.getElementById('repeatPop');
+  const repeatFreqGrid = document.getElementById('repeatFreqGrid');
+  const repeatWeekdaysSection = document.getElementById('repeatWeekdaysSection');
+  const repeatWeekdays = document.getElementById('repeatWeekdays');
+  const repeatMonthDaySection = document.getElementById('repeatMonthDaySection');
+  const repeatMonthDay = document.getElementById('repeatMonthDay');
+  const repeatMonthDayHint = document.getElementById('repeatMonthDayHint');
+  const repeatDurations = document.getElementById('repeatDurations');
+  const repeatUntil = document.getElementById('repeatUntil');
+  const repeatSummary = document.getElementById('repeatSummary');
+  const repeatDoneBtn = document.getElementById('repeatDoneBtn');
+  let repeatEdit = null; // working copy while the popover is open
+  // Whether the working copy is worth keeping on an outside click. Clicking
+  // "Add goal" straight after picking options must not throw them away, but
+  // opening the popover by accident and clicking off shouldn't set a repeat.
+  let repeatEditDirty = false;
+
+  // The choice buttons are built once and only restyled afterwards —
+  // rebuilding them mid-click would detach the click's own target.
+  REPEAT_FREQS.forEach(f => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'repeat-choice';
+    b.dataset.freq = f.id;
+    b.textContent = f.label;
+    b.addEventListener('click', () => {
+      repeatEdit.freq = f.id;
+      // Monthly over a single month is just one day — default it longer.
+      if (!repeatEdit.durationTouched) repeatEdit.duration = f.id === 'monthly' ? '6m' : '1m';
+      repeatEditDirty = true;
+      syncRepeatPop();
+    });
+    repeatFreqGrid.appendChild(b);
+  });
+
+  REPEAT_DURATIONS.forEach(dur => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'repeat-chip';
+    b.dataset.duration = dur.id;
+    b.textContent = dur.label;
+    b.addEventListener('click', () => {
+      if (dur.id === 'custom' && repeatEdit.duration !== 'custom') {
+        repeatEdit.until = keyForDate(draftEnd(repeatEdit, repeatStartDay()));
+      }
+      repeatEdit.duration = dur.id;
+      repeatEdit.durationTouched = true;
+      repeatEditDirty = true;
+      syncRepeatPop();
+    });
+    repeatDurations.appendChild(b);
+  });
+
+  // Rebuilt on open (never mid-click) so it follows the week-start setting.
+  function buildWeekdayButtons() {
+    repeatWeekdays.innerHTML = '';
+    for (let i = 0; i < 7; i++) {
+      const day = (settings.weekStart + i) % 7;
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'repeat-weekday';
+      b.dataset.day = day;
+      b.textContent = WEEKDAY_TWO[day];
+      b.setAttribute('aria-label', WEEKDAY_FULL[day]);
+      b.addEventListener('click', () => {
+        const has = repeatEdit.weekdays.includes(day);
+        if (has && repeatEdit.weekdays.length === 1) return;
+        repeatEdit.weekdays = has ? repeatEdit.weekdays.filter(d => d !== day) : repeatEdit.weekdays.concat(day);
+        repeatEditDirty = true;
+        syncRepeatPop();
+      });
+      repeatWeekdays.appendChild(b);
+    }
+  }
+
+  repeatMonthDay.addEventListener('input', () => {
+    const n = parseInt(repeatMonthDay.value, 10);
+    if (n >= 1 && n <= 31) {
+      repeatEdit.monthDay = n;
+      repeatEditDirty = true;
+      syncRepeatPop(true);
+    }
+  });
+  repeatMonthDay.addEventListener('blur', () => { if (repeatEdit) repeatMonthDay.value = repeatEdit.monthDay; });
+  repeatUntil.addEventListener('change', () => {
+    if (!repeatUntil.value) return;
+    repeatEdit.until = repeatUntil.value;
+    repeatEditDirty = true;
+    syncRepeatPop(true);
+  });
+
+  // fromInput: the change came from a text/date field, so don't overwrite it mid-typing.
+  function syncRepeatPop(fromInput) {
+    const e = repeatEdit;
+    repeatFreqGrid.querySelectorAll('.repeat-choice').forEach(b => b.classList.toggle('selected', b.dataset.freq === e.freq));
+    repeatWeekdaysSection.hidden = e.freq !== 'weekly';
+    repeatWeekdays.querySelectorAll('.repeat-weekday').forEach(b => b.classList.toggle('selected', e.weekdays.includes(Number(b.dataset.day))));
+    repeatMonthDaySection.hidden = e.freq !== 'monthly';
+    if (!fromInput) repeatMonthDay.value = e.monthDay;
+    repeatMonthDayHint.hidden = e.monthDay <= 28;
+    repeatDurations.querySelectorAll('.repeat-chip').forEach(b => b.classList.toggle('selected', b.dataset.duration === e.duration));
+
+    const start = repeatStartDay();
+    repeatUntil.hidden = e.duration !== 'custom';
+    repeatUntil.min = keyForDate(start);
+    repeatUntil.max = keyForDate(addDays(start, REPEAT_MAX_DAYS - 1));
+    if (!fromInput) repeatUntil.value = e.until;
+
+    const plan = draftPlan(e);
+    repeatSummary.innerHTML = '';
+    repeatSummary.classList.toggle('warn', !plan.keys.length);
+    if (!plan.keys.length) {
+      repeatSummary.textContent = 'No days in this range match. Pick more days or a longer time.';
+    } else {
+      const count = document.createElement('strong');
+      count.textContent = plan.keys.length + (plan.keys.length === 1 ? ' time' : ' times');
+      repeatSummary.appendChild(count);
+      repeatSummary.appendChild(document.createTextNode(' · ' + formatRange(dateFromKey(plan.keys[0]), dateFromKey(plan.keys[plan.keys.length - 1]))));
+      const rule = document.createElement('div');
+      rule.className = 'repeat-summary-rule';
+      rule.textContent = describeRule(e) + ', starting ' + shortDateWithDay(dateFromKey(plan.keys[0]));
+      repeatSummary.appendChild(rule);
+    }
+    repeatDoneBtn.disabled = !plan.keys.length;
+    positionRepeatPop();
+  }
+
+  // To the right of the Repeat button when there's room (desktop), else
+  // below or above it (mobile, where the sidebar spans the full width).
+  function positionRepeatPop() {
+    if (repeatPop.hidden) return;
+    const r = repeatBtn.getBoundingClientRect();
+    const pw = repeatPop.offsetWidth, ph = repeatPop.offsetHeight;
+    const gap = 12, edge = 8;
+    let left, top, side;
+    if (r.right + gap + pw <= window.innerWidth - edge) {
+      side = 'right';
+      left = r.right + gap;
+      top = r.top + r.height / 2 - ph / 2;
+    } else {
+      side = 'below';
+      left = r.right - pw;
+      top = r.bottom + gap;
+      // Above clears the "Repeat" label too, not just the button.
+      const groupTop = repeatBtn.parentElement.getBoundingClientRect().top;
+      if (top + ph > window.innerHeight - edge && groupTop - gap - ph >= edge) {
+        side = 'above';
+        top = groupTop - gap - ph;
+      }
+    }
+    left = Math.max(edge, Math.min(left, window.innerWidth - pw - edge));
+    top = Math.max(edge, Math.min(top, window.innerHeight - ph - edge));
+    repeatPop.style.left = left + 'px';
+    repeatPop.style.top = top + 'px';
+    repeatPop.dataset.side = side;
+    // Keep the little pointer aimed at the button even after clamping.
+    repeatPop.style.setProperty('--arrow-y', Math.max(16, Math.min(ph - 16, r.top + r.height / 2 - top)) + 'px');
+    repeatPop.style.setProperty('--arrow-x', Math.max(16, Math.min(pw - 16, r.left + r.width / 2 - left)) + 'px');
+  }
+
+  // intent: opened deliberately to set up a repeat (from the Repeating
+  // section), so even untouched defaults should stick.
+  function openRepeatPop(intent) {
+    repeatEdit = repeatDraft ? JSON.parse(JSON.stringify(repeatDraft)) : defaultRepeatDraft();
+    repeatEditDirty = !!repeatDraft || !!intent;
+    buildWeekdayButtons();
+    repeatPop.hidden = false;
+    repeatBtn.classList.add('open');
+    repeatBtn.setAttribute('aria-expanded', 'true');
+    syncRepeatPop();
+  }
+
+  // commit: keep the working copy (if it was touched and lands on any day);
+  // otherwise discard it and leave the previous setting as it was.
+  function closeRepeatPop(commit) {
+    if (repeatPop.hidden) return;
+    if (commit && repeatEditDirty && draftPlan(repeatEdit).keys.length) repeatDraft = repeatEdit;
+    repeatPop.hidden = true;
+    repeatEdit = null;
+    repeatBtn.classList.remove('open');
+    repeatBtn.setAttribute('aria-expanded', 'false');
+    renderRepeatBtn();
+  }
+
+  repeatBtn.addEventListener('click', () => {
+    if (repeatPop.hidden) openRepeatPop(false); else closeRepeatPop(true);
+  });
+  document.getElementById('repeatPopClose').addEventListener('click', () => closeRepeatPop(false));
+  repeatDoneBtn.addEventListener('click', () => {
+    repeatEditDirty = true;
+    closeRepeatPop(true);
+    if (!sidebarAddInput.value.trim()) sidebarAddInput.focus();
+  });
+  document.getElementById('repeatClearBtn').addEventListener('click', () => {
+    repeatDraft = null;
+    closeRepeatPop(false);
+  });
+  repeatPop.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.tagName === 'INPUT' && !repeatDoneBtn.disabled) {
+      e.preventDefault();
+      repeatDoneBtn.click();
+    }
+  });
+  document.addEventListener('click', (e) => {
+    if (repeatPop.hidden) return;
+    const path = e.composedPath();
+    if (path.includes(repeatPop) || path.includes(repeatBtn)) return;
+    closeRepeatPop(true);
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeRepeatPop(false); });
+  window.addEventListener('resize', positionRepeatPop);
+  document.addEventListener('scroll', positionRepeatPop, true);
+
+  // ---------- repeating goals: the "Repeating" section ----------
+  const repeatingBtn = document.getElementById('repeatingBtn');
+  const repeatingModal = document.getElementById('repeatingModal');
+  const repeatingOverlay = document.getElementById('repeatingOverlay');
+  const repeatingBody = document.getElementById('repeatingBody');
+  const repeatingCount = document.getElementById('repeatingCount');
+  let repeatingModalOpen = false;
+
+  function seriesStats() {
+    const todayKey = keyForDate(new Date());
+    const stats = new Map();
+    Object.keys(data).forEach(k => {
+      if (!isDateKey(k) || !Array.isArray(data[k])) return;
+      data[k].forEach(g => {
+        if (!g.seriesId) return;
+        let st = stats.get(g.seriesId);
+        if (!st) { st = { total: 0, done: 0, next: null }; stats.set(g.seriesId, st); }
+        st.total++;
+        if (g.done) st.done++;
+        if (!g.done && k >= todayKey && (!st.next || k < st.next)) st.next = k;
+      });
+    });
+    return stats;
+  }
+
+  // Drops a series' occurrences (all of them, or those keep() rejects),
+  // then trims its date range to what's left — or drops it entirely.
+  function pruneSeries(s, keep) {
+    const left = [];
+    Object.keys(data).forEach(k => {
+      if (!isDateKey(k) || !Array.isArray(data[k])) return;
+      data[k] = data[k].filter(g => g.seriesId !== s.id || (keep && keep(k, g)));
+      if (data[k].some(g => g.seriesId === s.id)) left.push(k);
+    });
+    if (!left.length) series = series.filter(x => x !== s);
+    else { left.sort(); s.start = left[0]; s.end = left[left.length - 1]; }
+    scheduleSave();
+    refreshAfterGoalChange();
+    renderRepeatingModal();
+  }
+
+  // Two taps for anything destructive — the first only arms the button.
+  function armConfirm(btn, confirmLabel, action) {
+    const label = btn.textContent;
+    let timer = null;
+    btn.addEventListener('click', () => {
+      if (!btn.classList.contains('armed')) {
+        btn.classList.add('armed');
+        btn.textContent = confirmLabel;
+        timer = setTimeout(() => { btn.classList.remove('armed'); btn.textContent = label; }, 4000);
+        return;
+      }
+      clearTimeout(timer);
+      action();
+    });
+  }
+
+  function jumpToDay(k) {
+    const d = dateFromKey(k);
+    selectedDay = d;
+    viewYear = d.getFullYear();
+    viewMonth = d.getMonth();
+    renderCalendar();
+    renderSidebarGoals();
+  }
+
+  function buildSeriesCard(s, st) {
+    const card = document.createElement('div');
+    card.className = 'repeat-card' + (st.next ? '' : ' finished');
+    const info = goalDotInfo(s);
+
+    const top = document.createElement('div');
+    top.className = 'repeat-card-top';
+    const dot = document.createElement('span');
+    dot.className = 'category-dot';
+    dot.style.background = info.color;
+    top.appendChild(dot);
+    const title = document.createElement('span');
+    title.className = 'repeat-card-title';
+    title.textContent = s.text;
+    top.appendChild(title);
+    if (displayCategory(s.category)) {
+      const tag = document.createElement('span');
+      tag.className = 'repeat-card-tag';
+      tag.textContent = info.name;
+      top.appendChild(tag);
+    }
+    card.appendChild(top);
+
+    const rule = document.createElement('div');
+    rule.className = 'repeat-card-rule';
+    rule.innerHTML = REPEAT_ICON_SVG;
+    rule.appendChild(document.createTextNode(describeRule(s) + ' · ' + formatRange(dateFromKey(s.start), dateFromKey(s.end))));
+    card.appendChild(rule);
+
+    const bar = document.createElement('div');
+    bar.className = 'repeat-progress';
+    const fill = document.createElement('div');
+    fill.className = 'repeat-progress-fill';
+    fill.style.width = (st.total ? Math.round(st.done / st.total * 100) : 0) + '%';
+    fill.style.background = info.color;
+    bar.appendChild(fill);
+    card.appendChild(bar);
+
+    const meta = document.createElement('div');
+    meta.className = 'repeat-card-meta';
+    meta.appendChild(document.createTextNode(st.done + ' of ' + st.total + ' done'));
+    if (st.next) {
+      meta.appendChild(document.createTextNode(' · Next: '));
+      const next = document.createElement('button');
+      next.type = 'button';
+      next.className = 'repeat-next-link';
+      next.textContent = st.next === keyForDate(new Date()) ? 'Today' : shortDateWithDay(dateFromKey(st.next));
+      next.title = 'Go to that day';
+      next.addEventListener('click', () => { closeRepeatingModal(); jumpToDay(st.next); });
+      meta.appendChild(next);
+    } else {
+      meta.appendChild(document.createTextNode(' · Finished'));
+    }
+    card.appendChild(meta);
+
+    const actions = document.createElement('div');
+    actions.className = 'repeat-card-actions';
+    if (st.next) {
+      const stop = document.createElement('button');
+      stop.type = 'button';
+      stop.className = 'mini-btn-ghost';
+      stop.textContent = 'Stop repeating';
+      stop.title = 'Removes the days after today that aren\'t done yet. Past days stay.';
+      const todayKey = keyForDate(new Date());
+      armConfirm(stop, 'Remove upcoming days?', () => pruneSeries(s, (k, g) => k <= todayKey || g.done));
+      actions.appendChild(stop);
+    }
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'mini-btn-ghost repeat-delete-btn';
+    del.textContent = 'Delete all';
+    armConfirm(del, 'Delete all ' + st.total + '?', () => pruneSeries(s, null));
+    actions.appendChild(del);
+    card.appendChild(actions);
+    return card;
+  }
+
+  function renderRepeatingModal() {
+    if (!repeatingModalOpen) return;
+    const stats = seriesStats();
+    // Occurrences can also be deleted one at a time from their days — once
+    // none are left, the series itself is gone too.
+    const kept = series.filter(s => stats.has(s.id));
+    if (kept.length !== series.length) { series = kept; scheduleSave(); }
+
+    const active = [], finished = [];
+    series.forEach(s => {
+      const st = stats.get(s.id);
+      (st.next ? active : finished).push({ s, st });
+    });
+    active.sort((a, b) => (a.st.next < b.st.next ? -1 : a.st.next > b.st.next ? 1 : 0));
+    finished.sort((a, b) => (a.s.end < b.s.end ? 1 : -1));
+
+    repeatingCount.textContent = active.length + ' active' + (finished.length ? ' · ' + finished.length + ' finished' : '');
+    repeatingBody.innerHTML = '';
+
+    if (!series.length) {
+      const empty = document.createElement('div');
+      empty.className = 'repeat-empty';
+      empty.innerHTML = REPEAT_ICON_SVG +
+        '<p class="repeat-empty-title">No repeating goals yet</p>' +
+        '<p>Add a goal in the sidebar and tap <strong>Repeat</strong> to have it show up every day, every other day, every week, or every month.</p>';
+      repeatingBody.appendChild(empty);
+      return;
+    }
+
+    [['Active', active], ['Finished', finished]].forEach(([title, items]) => {
+      if (!items.length) return;
+      const h = document.createElement('div');
+      h.className = 'repeat-list-title';
+      h.textContent = title;
+      repeatingBody.appendChild(h);
+      items.forEach(({ s, st }) => repeatingBody.appendChild(buildSeriesCard(s, st)));
+    });
+  }
+
+  function openRepeatingModal() {
+    repeatingModalOpen = true;
+    renderRepeatingModal();
+    repeatingModal.classList.add('open');
+    repeatingOverlay.classList.add('open');
+  }
+  function closeRepeatingModal() {
+    repeatingModalOpen = false;
+    repeatingModal.classList.remove('open');
+    repeatingOverlay.classList.remove('open');
+  }
+
+  // Straight from the Repeating section into setting one up: open the
+  // sidebar if it's collapsed, then the Repeat popover. Deferred so the
+  // click that got us here doesn't count as an outside click and close it.
+  function startNewRepeatingGoal() {
+    const wasCollapsed = settings.sidebarCollapsed;
+    if (wasCollapsed) {
+      settings.sidebarCollapsed = false;
+      saveSettings();
+      applySidebarCollapsed();
+    }
+    setTimeout(() => {
+      repeatBtn.scrollIntoView({ block: 'nearest' });
+      sidebarAddInput.focus({ preventScroll: true });
+      openRepeatPop(true);
+    }, wasCollapsed ? 340 : 0);
+  }
+
+  repeatingBtn.addEventListener('click', openRepeatingModal);
+  document.getElementById('repeatingCloseBtn').addEventListener('click', closeRepeatingModal);
+  repeatingOverlay.addEventListener('click', closeRepeatingModal);
+  document.getElementById('repeatingNewBtn').addEventListener('click', () => {
+    closeRepeatingModal();
+    startNewRepeatingGoal();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeRepeatingModal(); });
 
   function shiftSelectedDay(deltaDays) {
     const next = new Date(selectedDay);
@@ -1541,6 +2198,9 @@
     document.querySelectorAll('#subcategoriesEnabledOptions .option-btn').forEach(btn => {
       btn.classList.toggle('active', (btn.dataset.boolValue === 'true') === settings.subcategoriesEnabled);
     });
+    document.querySelectorAll('#repeatingEnabledOptions .option-btn').forEach(btn => {
+      btn.classList.toggle('active', (btn.dataset.boolValue === 'true') === settings.repeatingEnabled);
+    });
   }
 
   function applyVisibilitySettings() {
@@ -1549,6 +2209,8 @@
     document.getElementById('significanceGroup').style.display = settings.showSignificance ? '' : 'none';
     dpCatPicker.style.display = settings.showCategories ? '' : 'none';
     dpStarPicker.style.display = settings.showSignificance ? '' : 'none';
+    document.getElementById('repeatGroup').style.display = settings.repeatingEnabled ? '' : 'none';
+    document.getElementById('repeatingBtn').style.display = settings.repeatingEnabled ? '' : 'none';
     if (!settings.showCategories && categoryFilter !== null) {
       categoryFilter = null;
     }
@@ -1643,6 +2305,20 @@
       if (!settings.dayPreviewEnabled) closeDayPreview();
     });
   });
+  document.querySelectorAll('#repeatingEnabledOptions .option-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      settings.repeatingEnabled = btn.dataset.boolValue === 'true';
+      if (!settings.repeatingEnabled) {
+        closeRepeatPop(false);
+        repeatDraft = null;
+        renderRepeatBtn();
+      }
+      saveSettings();
+      renderSettingUI();
+      applyVisibilitySettings();
+      refreshAfterGoalChange();
+    });
+  });
   document.querySelectorAll('#subcategoriesEnabledOptions .option-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       settings.subcategoriesEnabled = btn.dataset.boolValue === 'true';
@@ -1708,6 +2384,7 @@
       categories = Array.isArray(data.__categories)
         ? data.__categories
         : DEFAULT_CATEGORIES.map(c => Object.assign({}, c));
+      series = Array.isArray(data.__series) ? data.__series : [];
     } catch (e) {
       console.error('Could not load goals', e);
     }

@@ -1295,6 +1295,20 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
 
 .mini-stars { font-size: 10.5px; color: var(--star-gold); letter-spacing: 1px; }
 
+.repeat-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--primary);
+  background: var(--primary-soft);
+  padding: 1px 7px 1px 5px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.repeat-badge svg { width: 10px; height: 10px; flex: none; }
+
 .goal-reorder {
   flex: none;
   display: flex;
@@ -1467,7 +1481,53 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
 .cd-suboption:active { transform: scale(0.97); }
 .cd-suboption .category-dot { width: 8px; height: 8px; }
 
-#significanceGroup { margin-top: 8px; }
+/* Significance and Repeat side by side, so Repeat reads as another
+   property of the goal being added rather than a separate action. */
+.add-options-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.repeat-group { display: flex; flex-direction: column; align-items: flex-end; }
+
+.repeat-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 3px 0 6px;
+  padding: 5px 11px 5px 9px;
+  border-radius: 999px;
+  border: 1.5px solid var(--line);
+  background: var(--bg);
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s cubic-bezier(.4,0,.2,1);
+}
+.repeat-btn svg { width: 13px; height: 13px; flex: none; transition: transform 0.35s cubic-bezier(.4,0,.2,1); }
+.repeat-btn:hover, .repeat-btn.open { border-color: var(--primary); color: var(--primary); }
+.repeat-btn:active { transform: scale(0.95); }
+.repeat-btn.active { background: var(--primary-soft); border-color: var(--primary); color: var(--primary); }
+.repeat-btn.open svg { transform: rotate(180deg); }
+
+.add-status {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--accent);
+  font-weight: 600;
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: opacity 0.2s ease, max-height 0.2s ease;
+}
+.add-status.show { opacity: 1; max-height: 60px; }
+.add-status.error { color: var(--danger); }
 
 .field-label {
   font-size: 11.5px;
@@ -1998,6 +2058,207 @@ h1.month-title {
 
 /* ---- settings drawer ---- */
 
+/* ---- "Repeat" popover — a small window beside the add form's Repeat button ---- */
+
+.repeat-pop {
+  position: fixed;
+  z-index: 220;
+  width: 276px;
+  max-width: calc(100vw - 16px);
+  background: var(--bg-elevated);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 18px 44px var(--shadow);
+  padding: 10px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: repeatPopIn 0.18s cubic-bezier(.16,1,.3,1);
+}
+.repeat-pop[hidden], .repeat-pop [hidden] { display: none !important; }
+@keyframes repeatPopIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* The little pointer, aimed back at the button. */
+.repeat-pop::before {
+  content: '';
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--line);
+  transform: rotate(45deg);
+}
+.repeat-pop[data-side="right"]::before { left: -6.5px; top: calc(var(--arrow-y) - 5.5px); border-top: none; border-right: none; }
+.repeat-pop[data-side="below"]::before { top: -6.5px; left: calc(var(--arrow-x) - 5.5px); border-right: none; border-bottom: none; }
+.repeat-pop[data-side="above"]::before { bottom: -6.5px; left: calc(var(--arrow-x) - 5.5px); border-left: none; border-top: none; }
+
+.repeat-pop-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: -4px; }
+.repeat-pop-title { font-family: 'Sora', sans-serif; font-size: 14px; font-weight: 700; color: var(--ink); }
+.repeat-pop-head .icon-btn { font-size: 13px; padding: 4px 7px; }
+
+.repeat-section { display: flex; flex-direction: column; gap: 6px; }
+.repeat-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-soft);
+}
+
+.repeat-freq-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+
+.repeat-choice, .repeat-chip, .repeat-weekday {
+  font-family: inherit;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1.5px solid var(--line);
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease, transform 0.1s cubic-bezier(.4,0,.2,1);
+}
+.repeat-choice:hover, .repeat-chip:hover, .repeat-weekday:hover { border-color: var(--primary); }
+.repeat-choice:active, .repeat-chip:active, .repeat-weekday:active { transform: scale(0.95); }
+.repeat-choice.selected, .repeat-chip.selected, .repeat-weekday.selected {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #FFFFFF;
+}
+
+.repeat-choice { font-size: 12.5px; padding: 8px 6px; border-radius: 9px; }
+
+.repeat-weekdays { display: flex; justify-content: space-between; }
+.repeat-weekday {
+  width: 31px;
+  height: 31px;
+  border-radius: 50%;
+  font-size: 11.5px;
+  padding: 0;
+}
+
+.repeat-monthday-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink); }
+.repeat-monthday-input, .repeat-until-input {
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+.repeat-monthday-input { width: 62px; text-align: center; }
+.repeat-until-input { width: 100%; color-scheme: light dark; }
+.repeat-monthday-input:focus, .repeat-until-input:focus { outline: none; border-color: var(--primary); }
+.repeat-hint { font-size: 11.5px; color: var(--ink-soft); }
+
+.repeat-duration-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.repeat-chip { font-size: 12px; padding: 5px 10px; border-radius: 999px; }
+
+.repeat-summary {
+  font-size: 12.5px;
+  color: var(--ink);
+  background: var(--primary-soft);
+  border-radius: 9px;
+  padding: 8px 10px;
+  line-height: 1.45;
+}
+.repeat-summary strong { color: var(--primary); }
+.repeat-summary-rule { color: var(--ink-soft); font-size: 12px; }
+.repeat-summary.warn { background: none; border: 1.5px dashed var(--danger); color: var(--danger); }
+
+.repeat-actions { display: flex; justify-content: space-between; gap: 8px; }
+.mini-btn-primary:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+.mini-btn-primary:disabled:hover { background: var(--primary); }
+
+/* ---- "Repeating goals" section (reuses the All-goals modal shell) ---- */
+
+#repeatingOverlay.open { z-index: 209; }
+
+.repeating-count-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.repeating-count-row .mini-btn-primary { font-size: 12px; padding: 6px 11px; }
+
+.repeat-list-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-soft);
+  margin: 8px 0 2px;
+}
+.repeat-list-title:first-child { margin-top: 0; }
+
+.repeat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+}
+.repeat-card.finished { opacity: 0.72; }
+
+.repeat-card-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.repeat-card-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.repeat-card-tag {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+.repeat-card-rule { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-soft); }
+.repeat-card-rule svg { width: 12px; height: 12px; flex: none; color: var(--primary); }
+
+.repeat-progress { height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.repeat-progress-fill { height: 100%; border-radius: 999px; transition: width 0.3s ease; }
+
+.repeat-card-meta { font-size: 12px; color: var(--ink-soft); }
+.repeat-next-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  color: var(--primary);
+  cursor: pointer;
+}
+.repeat-next-link:hover { text-decoration: underline; }
+
+.repeat-card-actions { display: flex; gap: 8px; margin-top: 2px; }
+.repeat-card-actions .mini-btn-ghost { font-size: 11.5px; padding: 5px 10px; }
+.repeat-delete-btn:hover { border-color: var(--danger); color: var(--danger); }
+.mini-btn-ghost.armed { background: var(--danger); border-color: var(--danger); color: #FFFFFF; }
+
+.repeat-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  padding: 50px 24px;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.repeat-empty svg { width: 34px; height: 34px; color: var(--primary); opacity: 0.7; margin-bottom: 6px; }
+.repeat-empty p { margin: 0; max-width: 320px; }
+.repeat-empty-title { font-family: 'Sora', sans-serif; font-weight: 700; font-size: 15px; color: var(--ink); }
+
 .drawer-overlay {
   position: fixed;
   inset: 0;
@@ -2124,6 +2385,10 @@ h1.month-title {
 }
 
 @media (max-width: 560px) {
+  /* Label on its own line, buttons together below it, none squeezed into two lines. */
+  .account-row { flex-wrap: wrap; row-gap: 8px; }
+  #accountLabel { flex-basis: 100%; }
+  .account-row .all-goals-btn, .account-row .logout-btn { white-space: nowrap; }
   .day-cell { min-height: 60px; padding: 5px; }
   .goal-preview { -webkit-line-clamp: 1; font-size: 10.5px; }
   .weekdays div { font-size: 10.5px; }
