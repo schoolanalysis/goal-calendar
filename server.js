@@ -85,7 +85,9 @@ const queries = {
 const app = express();
 app.set('trust proxy', 1);
 app.use(helmet({ contentSecurityPolicy: false }));
-app.use(express.json({ limit: '512kb' }));
+// Matches the 2,000,000-character cap PUT /api/goals enforces itself;
+// repeating goals store one entry per day, so payloads can grow past 512kb.
+app.use(express.json({ limit: '2mb' }));
 
 app.use(
   cookieSession({
