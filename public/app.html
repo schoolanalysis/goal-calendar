@@ -254,10 +254,14 @@
       <input class="add-input" id="editText" type="text" maxlength="200" autocomplete="off">
     </div>
     <div class="edit-field" id="editCategoryField">
-      <label class="pop-label" for="editCategory">Category</label>
-      <div class="edit-select-wrap">
-        <span class="category-dot" id="editCategoryDot"></span>
-        <select id="editCategory" class="edit-select"></select>
+      <div class="pop-label">Category</div>
+      <div class="category-dropdown edit-category-dropdown" id="editCategoryDropdown">
+        <button type="button" class="cd-trigger" aria-haspopup="listbox" aria-expanded="false" aria-label="Category">
+          <span class="cd-dot"></span>
+          <span class="cd-label">Category</span>
+          <svg class="cd-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div class="cd-menu" role="listbox" hidden></div>
       </div>
     </div>
     <div class="edit-field" id="editSignificanceField">

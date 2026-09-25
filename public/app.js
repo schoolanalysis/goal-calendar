@@ -442,122 +442,127 @@
     subcategoryFormFor = null;
   });
 
-  // ---------- custom category dropdown (add-goal form) ----------
-  const cdTrigger = document.getElementById('cdTrigger');
-  const cdMenu = document.getElementById('cdMenu');
-  const cdDot = document.getElementById('cdDot');
-  const cdLabel = document.getElementById('cdLabel');
-  let expandedDropdownCategoryIds = new Set();
+  // ---------- category picker (add-goal form, Edit goal window) ----------
+  // A menu of categories with colored dots. A category with subcategories
+  // gets a circled arrow on its right that opens them in place — a click,
+  // not a hover timer, so it works the same with a finger as with a mouse.
+  //   onChange(categoryId, subcategoryId) runs whenever the choice is set.
+  //   keepUnknown: show a since-deleted category as "Uncategorized" rather
+  //   than switching to the first one — so editing an old goal can't
+  //   silently move it.
+  function createCategoryPicker(root, onChange, keepUnknown) {
+    const trigger = root.querySelector('.cd-trigger');
+    const menu = root.querySelector('.cd-menu');
+    const dotEl = root.querySelector('.cd-dot');
+    const labelEl = root.querySelector('.cd-label');
+    let expanded = new Set();
+    const picker = { categoryId: null, subcategoryId: null };
 
-  function subcategoryName(cat, subId) {
-    const sub = cat && cat.subcategories && cat.subcategories.find(s => s.id === subId);
-    return sub ? sub.name : '';
-  }
+    picker.set = (id, subId) => {
+      const cat = findCategory(id) || (keepUnknown && id ? { id, name: 'Uncategorized', color: '#9AA3B2' } : allCategories()[0]);
+      picker.categoryId = cat.id;
+      picker.subcategoryId = settings.subcategoriesEnabled ? (subId || null) : null;
+      const sub = picker.subcategoryId && cat.subcategories && cat.subcategories.find(s => s.id === picker.subcategoryId);
+      dotEl.style.background = (sub && sub.color) || cat.color;
+      labelEl.textContent = cat.name + (sub ? ' — ' + sub.name : '');
+      if (onChange) onChange(picker.categoryId, picker.subcategoryId);
+    };
 
-  function setSelectedCategory(id, subId) {
-    const cat = findCategory(id) || allCategories()[0];
-    selectedCategoryId = cat.id;
-    selectedSubcategoryId = settings.subcategoriesEnabled ? (subId || null) : null;
-    const sub = selectedSubcategoryId && cat.subcategories && cat.subcategories.find(s => s.id === selectedSubcategoryId);
-    cdDot.style.background = (sub && sub.color) || cat.color;
-    cdLabel.textContent = cat.name + (sub ? ' — ' + sub.name : '');
-  }
+    picker.render = () => {
+      menu.innerHTML = '';
+      allCategories().forEach(cat => {
+        const hasSubs = settings.subcategoriesEnabled && !!(cat.subcategories && cat.subcategories.length);
+        const isExpanded = hasSubs && expanded.has(cat.id);
+        const opt = document.createElement('button');
+        opt.type = 'button';
+        opt.className = 'cd-option' + (picker.categoryId === cat.id && !picker.subcategoryId ? ' selected' : '');
+        opt.setAttribute('role', 'option');
 
-  // Click-to-expand accordion, right inside the scrollable option list —
-  // no hover timers, no separate floating panel to position, and it
-  // works identically with a mouse or a finger.
-  function renderCategoryDropdown() {
-    cdMenu.innerHTML = '';
-    allCategories().forEach(cat => {
-      const hasSubs = settings.subcategoriesEnabled && !!(cat.subcategories && cat.subcategories.length);
-      const isExpanded = hasSubs && expandedDropdownCategoryIds.has(cat.id);
-      const opt = document.createElement('button');
-      opt.type = 'button';
-      opt.className = 'cd-option';
-      opt.setAttribute('role', 'option');
+        const dot = document.createElement('span');
+        dot.className = 'category-dot';
+        dot.style.background = cat.color;
+        opt.appendChild(dot);
 
-      const dot = document.createElement('span');
-      dot.className = 'category-dot';
-      dot.style.background = cat.color;
-      opt.appendChild(dot);
+        const label = document.createElement('span');
+        label.className = 'cd-option-label';
+        label.textContent = cat.name;
+        opt.appendChild(label);
 
-      const label = document.createElement('span');
-      label.className = 'cd-option-label';
-      label.textContent = cat.name;
-      opt.appendChild(label);
-
-      // On the right, clearly visible (not a bare hover-only icon), so a
-      // category's subcategories are an obvious, inviting thing to open
-      // rather than a control the user has to go looking for.
-      if (hasSubs) {
-        const expandBtn = document.createElement('button');
-        expandBtn.type = 'button';
-        expandBtn.className = 'cd-expand-btn' + (isExpanded ? ' expanded' : '');
-        expandBtn.setAttribute('aria-label', (isExpanded ? 'Hide' : 'Show') + ' ' + cat.name + ' subcategories');
-        expandBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
-        expandBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          if (expandedDropdownCategoryIds.has(cat.id)) expandedDropdownCategoryIds.delete(cat.id);
-          else expandedDropdownCategoryIds.add(cat.id);
-          renderCategoryDropdown();
-        });
-        opt.appendChild(expandBtn);
-      } else {
-        const spacer = document.createElement('span');
-        spacer.className = 'cd-expand-spacer';
-        opt.appendChild(spacer);
-      }
-
-      opt.addEventListener('click', () => {
-        setSelectedCategory(cat.id, null);
-        closeCategoryDropdown();
-      });
-      cdMenu.appendChild(opt);
-
-      if (isExpanded) {
-        cat.subcategories.forEach(sub => {
-          const subOpt = document.createElement('button');
-          subOpt.type = 'button';
-          subOpt.className = 'cd-suboption';
-          const subDot = document.createElement('span');
-          subDot.className = 'category-dot';
-          subDot.style.background = sub.color || cat.color;
-          subOpt.appendChild(subDot);
-          subOpt.appendChild(document.createTextNode(sub.name));
-          subOpt.addEventListener('click', () => {
-            setSelectedCategory(cat.id, sub.id);
-            closeCategoryDropdown();
+        // On the right, clearly visible (not a bare hover-only icon), so a
+        // category's subcategories are an obvious, inviting thing to open.
+        if (hasSubs) {
+          const expandBtn = document.createElement('button');
+          expandBtn.type = 'button';
+          expandBtn.className = 'cd-expand-btn' + (isExpanded ? ' expanded' : '');
+          expandBtn.setAttribute('aria-label', (isExpanded ? 'Hide' : 'Show') + ' ' + cat.name + ' subcategories');
+          expandBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
+          expandBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (expanded.has(cat.id)) expanded.delete(cat.id);
+            else expanded.add(cat.id);
+            picker.render();
           });
-          cdMenu.appendChild(subOpt);
+          opt.appendChild(expandBtn);
+        } else {
+          const spacer = document.createElement('span');
+          spacer.className = 'cd-expand-spacer';
+          opt.appendChild(spacer);
+        }
+
+        opt.addEventListener('click', () => {
+          picker.set(cat.id, null);
+          picker.close();
         });
-      }
-    });
-    if (!selectedCategoryId || !allCategories().some(c => c.id === selectedCategoryId)) {
-      setSelectedCategory(allCategories()[0].id, null);
-    }
+        menu.appendChild(opt);
+
+        if (isExpanded) {
+          cat.subcategories.forEach(sub => {
+            const subOpt = document.createElement('button');
+            subOpt.type = 'button';
+            subOpt.className = 'cd-suboption' + (picker.categoryId === cat.id && picker.subcategoryId === sub.id ? ' selected' : '');
+            const subDot = document.createElement('span');
+            subDot.className = 'category-dot';
+            subDot.style.background = sub.color || cat.color;
+            subOpt.appendChild(subDot);
+            subOpt.appendChild(document.createTextNode(sub.name));
+            subOpt.addEventListener('click', () => {
+              picker.set(cat.id, sub.id);
+              picker.close();
+            });
+            menu.appendChild(subOpt);
+          });
+        }
+      });
+      const known = allCategories().some(c => c.id === picker.categoryId);
+      if (!picker.categoryId || (!known && !keepUnknown)) picker.set(allCategories()[0].id, null);
+    };
+
+    picker.isOpen = () => !menu.hidden;
+    picker.open = () => {
+      // Open straight onto the chosen subcategory, if there is one.
+      if (picker.subcategoryId) expanded.add(picker.categoryId);
+      picker.render();
+      menu.hidden = false;
+      trigger.setAttribute('aria-expanded', 'true');
+    };
+    picker.close = () => {
+      menu.hidden = true;
+      trigger.setAttribute('aria-expanded', 'false');
+      expanded = new Set();
+    };
+
+    trigger.addEventListener('click', () => { if (menu.hidden) picker.open(); else picker.close(); });
+    document.addEventListener('click', (e) => { if (!menu.hidden && !e.composedPath().includes(root)) picker.close(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) picker.close(); });
+    return picker;
   }
 
-  function openCategoryDropdown() {
-    cdMenu.hidden = false;
-    cdTrigger.setAttribute('aria-expanded', 'true');
-  }
-  function closeCategoryDropdown() {
-    cdMenu.hidden = true;
-    cdTrigger.setAttribute('aria-expanded', 'false');
-    if (expandedDropdownCategoryIds.size) {
-      expandedDropdownCategoryIds = new Set();
-      renderCategoryDropdown();
-    }
-  }
-  cdTrigger.addEventListener('click', () => {
-    if (cdMenu.hidden) openCategoryDropdown(); else closeCategoryDropdown();
+  const addPicker = createCategoryPicker(document.getElementById('categoryDropdown'), (categoryId, subcategoryId) => {
+    selectedCategoryId = categoryId;
+    selectedSubcategoryId = subcategoryId;
   });
-  document.addEventListener('click', (e) => {
-    if (!document.getElementById('categoryDropdown').contains(e.target)) closeCategoryDropdown();
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeCategoryDropdown();
-  });
+  function setSelectedCategory(id, subId) { addPicker.set(id, subId); }
+  function renderCategoryDropdown() { addPicker.render(); }
 
   sidebarStarPicker.querySelectorAll('button').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1014,20 +1019,27 @@
   function makeRowDraggable(row, goal, list, opts) {
     row.classList.add('goal-draggable');
     row.dataset.dragGroup = opts.dragGroup;
+    row.dataset.goalId = goal.id;
     rowInfo.set(row, { goal, list, dateKey: opts.dateKey });
 
-    const grip = document.createElement('button');
-    grip.type = 'button';
+    // A hover-only grip hanging in the list's left margin, just outside the
+    // row, so it costs the row no width. Purely a visual cue: the whole row
+    // is what you drag (and grabbing the grip counts, as it's inside it).
+    const grip = document.createElement('span');
     grip.className = 'goal-grip';
-    grip.dataset.goalId = goal.id;
-    grip.title = 'Drag to reorder';
-    grip.setAttribute('aria-label', 'Move "' + goal.text + '" (drag, or press the up and down arrow keys)');
+    grip.setAttribute('aria-hidden', 'true');
     grip.innerHTML = GRIP_SVG;
     row.insertBefore(grip, row.firstChild);
 
     row.addEventListener('pointerdown', (e) => onRowPointerDown(e, row));
-    grip.addEventListener('keydown', (e) => {
-      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+
+    // Keyboard: Alt+↑ / Alt+↓ on the goal's name moves it.
+    const name = row.querySelector('.sidebar-goal-text');
+    if (!name) return;
+    name.title = 'Click to edit · drag to move';
+    name.setAttribute('aria-keyshortcuts', 'Alt+ArrowUp Alt+ArrowDown');
+    name.addEventListener('keydown', (e) => {
+      if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
       e.preventDefault();
       const rows = groupRows(row);
       const from = rows.indexOf(row);
@@ -1035,7 +1047,7 @@
       if (to < 0 || to >= rows.length) return;
       const scope = row.closest('#sidebarGoalList, #dpGoalList, #allGoalsBody');
       commitReorder(row, rows, from, to);
-      const again = scope && scope.querySelector('.goal-grip[data-goal-id="' + goal.id + '"]');
+      const again = scope && scope.querySelector('.sidebar-goal-row[data-goal-id="' + goal.id + '"] .sidebar-goal-text');
       if (again) again.focus();
     });
   }
@@ -1046,18 +1058,34 @@
       .filter(el => el.classList.contains('goal-draggable') && el.dataset.dragGroup === row.dataset.dragGroup);
   }
 
+  const TOUCH_HOLD_MS = 280;
+
+  // Mouse: press anywhere on the row (except its buttons) and move a few
+  // pixels. Touch: press and hold briefly, then drag — so an ordinary swipe
+  // across the list still scrolls it.
   function onRowPointerDown(e, row) {
     if (drag || e.button !== 0) return;
-    const onGrip = !!e.target.closest('.goal-grip');
-    // Touch drags only from the grip, so swiping a list still scrolls it; a
-    // mouse can grab the row anywhere that isn't one of its other controls.
-    if (!onGrip && (e.pointerType !== 'mouse' || e.target.closest('button, input, select, textarea, a, label, form'))) return;
-    e.preventDefault(); // no text selection while dragging
-    const press = { row, pointerId: e.pointerId, x: e.clientX, y: e.clientY, type: e.pointerType, threshold: onGrip ? 3 : 6 };
+    if (e.target.closest('button, input, select, textarea, a, label, form')) return;
+    const isMouse = e.pointerType === 'mouse';
+    if (isMouse) e.preventDefault(); // no text selection while dragging
+    const press = { row, pointerId: e.pointerId, x: e.clientX, y: e.clientY, type: e.pointerType, holdTimer: 0 };
+
+    const stop = () => {
+      clearTimeout(press.holdTimer);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+    };
     const move = (ev) => {
       if (ev.pointerId !== press.pointerId) return;
       if (!drag) {
-        if (Math.hypot(ev.clientX - press.x, ev.clientY - press.y) < press.threshold) return;
+        const moved = Math.hypot(ev.clientX - press.x, ev.clientY - press.y);
+        if (!isMouse) {
+          // Moved before the hold completed: it's a scroll, not a drag.
+          if (moved > 8) stop();
+          return;
+        }
+        if (moved < 6) return;
         beginDrag(press);
       }
       ev.preventDefault();
@@ -1066,15 +1094,19 @@
     };
     const up = (ev) => {
       if (ev.pointerId !== press.pointerId) return;
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-      window.removeEventListener('pointercancel', up);
+      stop();
       if (drag) endDrag(ev.type === 'pointercancel');
     };
+    if (!isMouse) press.holdTimer = setTimeout(() => beginDrag(press), TOUCH_HOLD_MS);
     window.addEventListener('pointermove', move, { passive: false });
     window.addEventListener('pointerup', up);
     window.addEventListener('pointercancel', up);
   }
+
+  // Once a touch drag has begun, the finger moving must drag, not scroll the
+  // page — and a long press mustn't open the browser's context menu.
+  document.addEventListener('touchmove', (e) => { if (drag) e.preventDefault(); }, { passive: false });
+  document.addEventListener('contextmenu', (e) => { if (drag) e.preventDefault(); });
 
   function findScroller(el) {
     for (let n = el.parentElement; n && n !== document.body; n = n.parentElement) {
@@ -1100,7 +1132,7 @@
     document.body.classList.add('goal-drag-active');
     row.classList.add('goal-dragging');
     rows.forEach(r => { if (r !== row) r.classList.add('goal-drag-sibling'); });
-    if (press.type === 'touch' && navigator.vibrate) navigator.vibrate(8);
+    if (press.type !== 'mouse' && navigator.vibrate) navigator.vibrate(10); // a little "picked up" tap
     drag.raf = requestAnimationFrame(autoScroll);
   }
 
@@ -2179,8 +2211,6 @@
   const editForm = document.getElementById('editForm');
   const editWhen = document.getElementById('editWhen');
   const editText = document.getElementById('editText');
-  const editCategory = document.getElementById('editCategory');
-  const editCategoryDot = document.getElementById('editCategoryDot');
   const editStarPicker = document.getElementById('editStarPicker');
   const editTimeStart = document.getElementById('editTimeStart');
   const editTimeEnd = document.getElementById('editTimeEnd');
@@ -2190,34 +2220,9 @@
   let editing = null; // { goal, dateKey } while the editor is open
   let editStars = 0;
 
-  // The picker's value is 'categoryId' or 'categoryId::subcategoryId'.
-  function editChoice() {
-    const [category, subcategory] = editCategory.value.split('::');
-    return { category, subcategory: subcategory || null };
-  }
-
-  function fillEditCategories(g) {
-    editCategory.innerHTML = '';
-    allCategories().forEach(cat => {
-      editCategory.add(new Option(cat.name, cat.id));
-      if (!settings.subcategoriesEnabled) return;
-      (cat.subcategories || []).forEach(sub => {
-        editCategory.add(new Option('   ' + cat.name + ' — ' + sub.name, cat.id + '::' + sub.id));
-      });
-    });
-    const withSub = settings.subcategoriesEnabled && g.subcategory ? g.category + '::' + g.subcategory : null;
-    editCategory.value = withSub || g.category;
-    if (editCategory.value !== (withSub || g.category)) editCategory.value = g.category; // subcategory since removed
-    if (editCategory.value !== g.category && !(withSub && editCategory.value === withSub)) {
-      // Its category was deleted: offer it as-is so saving doesn't silently move it.
-      editCategory.add(new Option('Uncategorized', g.category), 0);
-      editCategory.value = g.category;
-    }
-    syncEditCategoryDot();
-  }
-
-  function syncEditCategoryDot() { editCategoryDot.style.background = goalDotInfo(editChoice()).color; }
-  editCategory.addEventListener('change', syncEditCategoryDot);
+  // The same category picker as the add-goal form's.
+  const editPicker = createCategoryPicker(document.getElementById('editCategoryDropdown'), null, true);
+  function editChoice() { return { category: editPicker.categoryId, subcategory: editPicker.subcategoryId }; }
 
   function renderEditStars(hover) {
     editStarPicker.querySelectorAll('button').forEach(b => {
@@ -2279,7 +2284,9 @@
     }
 
     editText.value = g.text;
-    fillEditCategories(g);
+    editPicker.close();
+    editPicker.set(g.category, g.subcategory);
+    editPicker.render();
     editStars = g.stars || 0;
     renderEditStars();
     editTimeStart.value = g.time || '';
@@ -2372,7 +2379,8 @@
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && editing) {
       e.stopPropagation();
-      closeEditGoal();
+      // An open category menu closes first; the editor on the next Esc.
+      if (editPicker.isOpen()) editPicker.close(); else closeEditGoal();
     }
   }, true);
 
