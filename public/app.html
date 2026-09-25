@@ -42,7 +42,14 @@
         </div>
         <span class="today-label" id="sidebarDayLabel">Today</span>
       </div>
-      <button class="today-jump" id="sidebarJumpToday">Jump to today</button>
+      <div class="today-sub-row">
+        <button class="today-jump" id="sidebarJumpToday">Jump to today</button>
+        <span class="order-note" id="orderNote" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16M3 8l4-4 4 4M17 20V4M13 16l4 4 4-4"/></svg>
+          Your order
+          <button type="button" class="order-reset-btn" id="orderResetBtn" title="Sort this day automatically again">Reset</button>
+        </span>
+      </div>
 
       <div class="sidebar-goal-list" id="sidebarGoalList"></div>
 
@@ -318,7 +325,7 @@
         <button class="option-btn" data-sort-value="time">Time</button>
         <button class="option-btn" data-sort-value="manual">Manual</button>
       </div>
-      <p class="drawer-footnote" style="margin-top:8px;">Manual order can be changed with the up/down arrows on each goal (while viewing "All goals").</p>
+      <p class="drawer-footnote" style="margin-top:8px;">Drag any goal to move it, in any mode. Picking a sort here re-sorts every day that way. Manual turns automatic sorting off, so goals stay exactly where you put them.</p>
     </div>
     <div>
       <div class="setting-group-title">Show in sidebar</div>
