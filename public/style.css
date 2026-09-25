@@ -1336,34 +1336,36 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
 /* ---- drag to reorder ---- */
 
 .sidebar-goal-row { position: relative; }
-.goal-draggable { padding-left: 20px; cursor: grab; }
 
-/* A six-dot grip in the row's left edge: faint until the row is hovered,
-   always showing on touch screens, where it's the part you drag by. */
+/* A six-dot grip that hangs in the list's left margin, just outside the
+   row — so the row keeps its full width — and only shows on hover. It's a
+   cue, not a requirement: the whole row can be grabbed. */
 .goal-grip {
   position: absolute;
-  left: 3px;
-  top: 0;
-  bottom: 0;
-  width: 14px;
+  left: -12px;
+  top: 50%;
+  width: 10px;
+  height: 18px;
+  margin-top: -9px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0;
-  margin: 0;
-  background: none;
-  border: none;
   color: var(--ink-soft);
   opacity: 0;
   cursor: grab;
-  touch-action: none;
   transition: opacity 0.15s ease, color 0.15s ease;
 }
-.goal-grip svg { width: 8px; height: 13px; fill: currentColor; }
-.goal-draggable:hover .goal-grip { opacity: 0.55; }
-.goal-grip:hover { opacity: 1 !important; color: var(--primary); }
-.goal-grip:focus-visible { opacity: 1; outline: 2px solid var(--primary); outline-offset: -1px; border-radius: 5px; }
-@media (hover: none) { .goal-grip { opacity: 0.4; } }
+.goal-grip svg { width: 7px; height: 12px; fill: currentColor; }
+@media (hover: hover) {
+  .goal-draggable { cursor: grab; }
+  .goal-draggable:hover .goal-grip { opacity: 0.6; }
+  .goal-grip:hover { opacity: 1; color: var(--primary); }
+}
+/* Touch screens pick a goal up with a press-and-hold instead. */
+@media (hover: none) {
+  .goal-grip { display: none; }
+  .goal-draggable { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+}
 
 /* Picked up: lifted, a little larger, following the pointer (translate
    isn't transitioned here, so it tracks without lag). */
@@ -1488,7 +1490,8 @@ body.goal-drag-active, body.goal-drag-active * { cursor: grabbing !important; us
 
 .cd-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .cd-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cd-chevron { width: 15px; height: 15px; flex: none; color: var(--ink-soft); }
+.cd-chevron { width: 15px; height: 15px; flex: none; color: var(--ink-soft); transition: transform 0.2s ease; }
+.cd-trigger[aria-expanded="true"] .cd-chevron { transform: rotate(180deg); }
 
 .cd-menu {
   position: absolute;
@@ -1523,6 +1526,7 @@ body.goal-drag-active, body.goal-drag-active * { cursor: grabbing !important; us
 }
 
 .cd-option:hover { background: var(--primary-soft); }
+.cd-option.selected, .cd-suboption.selected { background: var(--primary-soft); font-weight: 600; }
 .cd-option:active { transform: scale(0.97); }
 .cd-option .category-dot { width: 9px; height: 9px; }
 .cd-option-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2441,21 +2445,15 @@ h1.month-title {
 .edit-field { display: flex; flex-direction: column; gap: 6px; border: none; margin: 0; padding: 0; min-width: 0; }
 .edit-field .star-picker { padding: 0; }
 
-.edit-select-wrap { position: relative; display: flex; align-items: center; }
-.edit-select-wrap .category-dot { position: absolute; left: 11px; width: 9px; height: 9px; pointer-events: none; }
-.edit-select {
-  width: 100%;
-  font-family: inherit;
-  font-size: 13.5px;
-  color: var(--ink);
-  background: var(--bg);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 9px 10px 9px 28px;
-  cursor: pointer;
-  color-scheme: light dark;
+/* Same picker as the add-goal form's, but its menu opens in place below
+   the button, pushing the fields down, so the window never clips it. */
+.edit-category-dropdown .cd-menu {
+  position: static;
+  margin-top: 6px;
+  max-height: 240px;
+  box-shadow: 0 6px 16px var(--shadow);
+  animation: popWindowIn 0.16s cubic-bezier(.16,1,.3,1);
 }
-.edit-select:focus { outline: none; border-color: var(--primary); }
 
 .edit-time-row { display: flex; align-items: center; gap: 8px; }
 .edit-time-row .time-input { flex: 1; min-width: 0; font-size: 15px; padding: 7px 8px; }
