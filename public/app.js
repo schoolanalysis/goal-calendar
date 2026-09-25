@@ -856,14 +856,21 @@
     }
     if (g.seriesId && settings.repeatingEnabled) {
       const s = series.find(x => x.id === g.seriesId);
-      const badge = document.createElement('span');
-      badge.className = 'repeat-badge';
-      badge.title = s ? describeRule(s) + timeSuffix(s.time, s.endTime) + ' · ' + formatRange(dateFromKey(s.start), dateFromKey(s.end)) : 'Recurring goal';
-      badge.innerHTML = REPEAT_ICON_SVG;
-      const badgeText = document.createElement('span');
-      badgeText.textContent = s ? shortRuleLabel(s) : 'Repeats';
-      badge.appendChild(badgeText);
-      meta.appendChild(badge);
+      const repeatInfo = s ? describeRule(s) + timeSuffix(s.time, s.endTime) + ' · ' + formatRange(dateFromKey(s.start), dateFromKey(s.end)) : 'Recurring goal';
+      if (opts.hideRepeatBadge) {
+        // No room for the badge here (the sidebar also shows the category
+        // tag), so the schedule moves into the name's tooltip instead.
+        text.dataset.repeatInfo = repeatInfo;
+      } else {
+        const badge = document.createElement('span');
+        badge.className = 'repeat-badge';
+        badge.title = repeatInfo;
+        badge.innerHTML = REPEAT_ICON_SVG;
+        const badgeText = document.createElement('span');
+        badgeText.textContent = s ? shortRuleLabel(s) : 'Repeats';
+        badge.appendChild(badgeText);
+        meta.appendChild(badge);
+      }
     }
     if (meta.childNodes.length) main.appendChild(meta);
 
@@ -1036,7 +1043,7 @@
     // Keyboard: Alt+↑ / Alt+↓ on the goal's name moves it.
     const name = row.querySelector('.sidebar-goal-text');
     if (!name) return;
-    name.title = 'Click to edit · drag to move';
+    name.title = 'Click to edit · drag to move' + (name.dataset.repeatInfo ? '\nRepeats: ' + name.dataset.repeatInfo : '');
     name.setAttribute('aria-keyshortcuts', 'Alt+ArrowUp Alt+ArrowDown');
     name.addEventListener('keydown', (e) => {
       if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
@@ -1288,6 +1295,7 @@
       const appendGoalRow = (g, indent, dragGroup) => {
         const row = buildGoalRowEl(g, fullList, {
           dotOnlyCategory: true,
+          hideRepeatBadge: opts.hideRepeatBadge,
           dateKey: opts.dateKey,
           dragGroup,
           onRefresh: opts.onRefresh
@@ -1356,6 +1364,7 @@
       sortGoals(filteredList, custom).forEach(g => {
         container.appendChild(buildGoalRowEl(g, fullList, {
           dotOnlyCategory: opts.dotOnlyCategory,
+          hideRepeatBadge: opts.hideRepeatBadge,
           dateKey: opts.dateKey,
           dragGroup: 'all',
           onRefresh: opts.onRefresh
@@ -1373,6 +1382,7 @@
     renderGoalListInto(sidebarGoalList, fullList, filteredList, {
       dateKey: k,
       dotOnlyCategory: false,
+      hideRepeatBadge: true,
       showCategoryHeaders: true,
       onRefresh: refreshAfterGoalChange
     });

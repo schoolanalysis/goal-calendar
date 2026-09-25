@@ -1281,11 +1281,14 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
 .sidebar-goal-text[role="button"]:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .sidebar-goal-text.done { color: var(--done-strike); text-decoration: line-through; }
 
+/* Wraps onto a second line rather than ever running past the row's edge. */
 .sidebar-goal-meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 4px 6px;
   margin-top: 4px;
+  min-width: 0;
 }
 
 .mini-category-tag {
@@ -1294,6 +1297,10 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
   padding: 2px 7px;
   border-radius: 999px;
   color: #FFFFFF;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mini-stars { font-size: 10.5px; color: var(--star-gold); letter-spacing: 1px; }
