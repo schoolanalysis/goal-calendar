@@ -95,7 +95,7 @@
   <div class="main-col">
     <div class="account-row">
       <span id="accountLabel">Loading account…</span>
-      <button class="all-goals-btn" id="repeatingBtn" style="margin-left:auto;">Repeating</button>
+      <button class="all-goals-btn" id="repeatingBtn" style="margin-left:auto;">Recurring Goals</button>
       <button class="all-goals-btn" id="allGoalsBtn">All goals</button>
       <button class="gear-btn" id="gearBtn" aria-label="Settings">&#9881;</button>
       <button class="logout-btn" id="logoutBtn">Log out</button>
@@ -162,12 +162,12 @@
 <div class="drawer-overlay" id="repeatingOverlay"></div>
 <div class="all-goals-modal" id="repeatingModal">
   <div class="dp-head">
-    <span class="dp-date">Repeating goals</span>
+    <span class="dp-date">Recurring goals</span>
     <button class="icon-btn" id="repeatingCloseBtn" aria-label="Close">&#10005;</button>
   </div>
   <div class="all-goals-count repeating-count-row">
     <span id="repeatingCount"></span>
-    <button type="button" class="mini-btn-primary" id="repeatingNewBtn">+ New repeating goal</button>
+    <button type="button" class="mini-btn-primary" id="repeatingNewBtn">+ New recurring goal</button>
   </div>
   <div class="all-goals-body" id="repeatingBody"></div>
 </div>
@@ -230,6 +230,62 @@
     <button type="button" class="mini-btn-ghost" id="timeClearBtn">No time</button>
     <button type="button" class="mini-btn-primary" id="timeDoneBtn">Done</button>
   </div>
+</div>
+
+<!-- Editing a goal already on the calendar. Above every other window, since
+     it can be opened from the sidebar, the day preview or "All goals". -->
+<div class="drawer-overlay" id="editOverlay"></div>
+<div class="edit-modal" id="editModal" role="dialog" aria-modal="true" aria-labelledby="editTitle">
+  <div class="dp-head">
+    <span class="dp-date" id="editTitle">Edit goal</span>
+    <button class="icon-btn" id="editCloseBtn" aria-label="Close">&#10005;</button>
+  </div>
+  <form class="edit-body" id="editForm" novalidate>
+    <div class="edit-when" id="editWhen"></div>
+    <div class="edit-field">
+      <label class="pop-label" for="editText">Goal</label>
+      <input class="add-input" id="editText" type="text" maxlength="200" autocomplete="off">
+    </div>
+    <div class="edit-field" id="editCategoryField">
+      <label class="pop-label" for="editCategory">Category</label>
+      <div class="edit-select-wrap">
+        <span class="category-dot" id="editCategoryDot"></span>
+        <select id="editCategory" class="edit-select"></select>
+      </div>
+    </div>
+    <div class="edit-field" id="editSignificanceField">
+      <div class="pop-label">Significance</div>
+      <div class="star-picker" id="editStarPicker">
+        <button type="button" data-star="1" aria-label="1 star">&#9733;</button>
+        <button type="button" data-star="2" aria-label="2 stars">&#9733;</button>
+        <button type="button" data-star="3" aria-label="3 stars">&#9733;</button>
+        <button type="button" data-star="4" aria-label="4 stars">&#9733;</button>
+        <button type="button" data-star="5" aria-label="5 stars">&#9733;</button>
+      </div>
+    </div>
+    <div class="edit-field" id="editTimeField">
+      <div class="pop-label">Time <span class="pop-label-soft">· end time optional</span></div>
+      <div class="edit-time-row">
+        <input type="time" id="editTimeStart" class="time-input" aria-label="Starts at">
+        <span class="edit-time-sep">to</span>
+        <input type="time" id="editTimeEnd" class="time-input" aria-label="Ends at (optional)">
+      </div>
+      <div class="edit-time-foot">
+        <span class="edit-warning" id="editTimeWarning"></span>
+        <button type="button" class="edit-link-btn" id="editTimeClear">Remove time</button>
+      </div>
+    </div>
+    <fieldset class="edit-field edit-scope" id="editScopeField">
+      <legend class="pop-label">This goal repeats. Apply changes to</legend>
+      <label class="edit-scope-option"><input type="radio" name="editScope" value="one" checked> Only this day</label>
+      <label class="edit-scope-option"><input type="radio" name="editScope" value="upcoming"> This and upcoming days</label>
+      <label class="edit-scope-option"><input type="radio" name="editScope" value="all"> Every day it repeats</label>
+    </fieldset>
+    <div class="pop-actions">
+      <button type="button" class="mini-btn-ghost" id="editCancelBtn">Cancel</button>
+      <button type="submit" class="mini-btn-primary" id="editSaveBtn">Save changes</button>
+    </div>
+  </form>
 </div>
 
 <div class="drawer-overlay" id="drawerOverlay"></div>
@@ -301,13 +357,22 @@
       <p class="drawer-footnote" style="margin-top:8px;">When on, finishing every subgoal automatically checks off the goal itself.</p>
     </div>
     <div>
-      <div class="setting-group-title">Repeating goals</div>
-      <div class="option-row" id="repeatingEnabledOptions">
-        <span class="toggle-row-label">Enable repeating goals</span>
+      <div class="setting-group-title">Timed goals</div>
+      <div class="option-row" id="timesEnabledOptions">
+        <span class="toggle-row-label">Enable timed goals</span>
         <button class="option-btn" data-bool-value="true">On</button>
         <button class="option-btn" data-bool-value="false">Off</button>
       </div>
-      <p class="drawer-footnote" style="margin-top:8px;">Adds a Repeat button next to Significance when you add a goal, and a Repeating section to manage them. Turning it off hides both. Goals already on your calendar stay where they are.</p>
+      <p class="drawer-footnote" style="margin-top:8px;">Lets you give a goal a time of day when you add or edit it. Turning it off hides times everywhere. Goals keep their times, so turning it back on brings them back.</p>
+    </div>
+    <div>
+      <div class="setting-group-title">Recurring goals</div>
+      <div class="option-row" id="repeatingEnabledOptions">
+        <span class="toggle-row-label">Enable recurring goals</span>
+        <button class="option-btn" data-bool-value="true">On</button>
+        <button class="option-btn" data-bool-value="false">Off</button>
+      </div>
+      <p class="drawer-footnote" style="margin-top:8px;">Adds a Repeat button next to Significance when you add a goal, and a Recurring Goals section to manage them. Turning it off hides both. Goals already on your calendar stay where they are.</p>
     </div>
     <div>
       <div class="setting-group-title">Categories</div>

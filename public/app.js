@@ -62,7 +62,8 @@
     subgoalsAutoComplete: false,
     dayPreviewEnabled: true,
     subcategoriesEnabled: true,
-    repeatingEnabled: true
+    repeatingEnabled: true,
+    timesEnabled: true
   };
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
@@ -666,12 +667,14 @@
     return h ? h + ' hr' + (m ? ' ' + m + ' min' : '') : m + ' min';
   }
   // " at 9:45 AM" / ", 9:45 – 10:45 AM" — appended to a date or repeat description.
+  // With timed goals switched off, stored times are kept but ignored.
   function timeSuffix(start, end) {
-    if (!start) return '';
+    if (!start || !settings.timesEnabled) return '';
     return end ? ', ' + formatTimeRange(start, end) : ' at ' + formatTime(start);
   }
   // Earlier times first; goals without a time after every timed one.
   function compareTime(a, b) {
+    if (!settings.timesEnabled) return 0;
     if (a.time && b.time) return a.time < b.time ? -1 : a.time > b.time ? 1 : 0;
     return a.time ? -1 : b.time ? 1 : 0;
   }
@@ -788,17 +791,28 @@
     const text = document.createElement('div');
     text.className = 'sidebar-goal-text' + (g.done ? ' done' : '');
     text.textContent = g.text;
+    // The name opens the editor — the one obvious place to click to change a goal.
+    text.setAttribute('role', 'button');
+    text.tabIndex = 0;
+    text.title = 'Edit goal';
+    text.addEventListener('click', () => openEditGoal(g, fullList, false));
+    text.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEditGoal(g, fullList, false); }
+    });
     main.appendChild(text);
 
     const meta = document.createElement('div');
     meta.className = 'sidebar-goal-meta';
-    if (g.time) {
-      const chip = document.createElement('span');
+    if (g.time && settings.timesEnabled) {
+      const chip = document.createElement('button');
+      chip.type = 'button';
       chip.className = 'time-chip';
+      chip.title = 'Change the time';
       chip.innerHTML = CLOCK_ICON_SVG;
       const chipText = document.createElement('span');
       chipText.textContent = formatTimeRange(g.time, g.endTime);
       chip.appendChild(chipText);
+      chip.addEventListener('click', () => openEditGoal(g, fullList, true));
       meta.appendChild(chip);
     }
     const catInfo = settings.showCategories ? goalDisplayInfo(g) : null;
@@ -819,7 +833,7 @@
       const s = series.find(x => x.id === g.seriesId);
       const badge = document.createElement('span');
       badge.className = 'repeat-badge';
-      badge.title = s ? describeRule(s) + timeSuffix(s.time, s.endTime) + ' · ' + formatRange(dateFromKey(s.start), dateFromKey(s.end)) : 'Repeating goal';
+      badge.title = s ? describeRule(s) + timeSuffix(s.time, s.endTime) + ' · ' + formatRange(dateFromKey(s.start), dateFromKey(s.end)) : 'Recurring goal';
       badge.innerHTML = REPEAT_ICON_SVG;
       const badgeText = document.createElement('span');
       badgeText.textContent = s ? shortRuleLabel(s) : 'Repeats';
@@ -1956,6 +1970,209 @@
   window.addEventListener('resize', () => positionPopover(timePop, timeBtn));
   document.addEventListener('scroll', () => positionPopover(timePop, timeBtn), true);
 
+  // ---------- editing a goal ----------
+  const editModal = document.getElementById('editModal');
+  const editOverlay = document.getElementById('editOverlay');
+  const editForm = document.getElementById('editForm');
+  const editWhen = document.getElementById('editWhen');
+  const editText = document.getElementById('editText');
+  const editCategory = document.getElementById('editCategory');
+  const editCategoryDot = document.getElementById('editCategoryDot');
+  const editStarPicker = document.getElementById('editStarPicker');
+  const editTimeStart = document.getElementById('editTimeStart');
+  const editTimeEnd = document.getElementById('editTimeEnd');
+  const editTimeWarning = document.getElementById('editTimeWarning');
+  const editSaveBtn = document.getElementById('editSaveBtn');
+  const editScopeField = document.getElementById('editScopeField');
+  let editing = null; // { goal, dateKey } while the editor is open
+  let editStars = 0;
+
+  // The picker's value is 'categoryId' or 'categoryId::subcategoryId'.
+  function editChoice() {
+    const [category, subcategory] = editCategory.value.split('::');
+    return { category, subcategory: subcategory || null };
+  }
+
+  function fillEditCategories(g) {
+    editCategory.innerHTML = '';
+    allCategories().forEach(cat => {
+      editCategory.add(new Option(cat.name, cat.id));
+      if (!settings.subcategoriesEnabled) return;
+      (cat.subcategories || []).forEach(sub => {
+        editCategory.add(new Option('   ' + cat.name + ' — ' + sub.name, cat.id + '::' + sub.id));
+      });
+    });
+    const withSub = settings.subcategoriesEnabled && g.subcategory ? g.category + '::' + g.subcategory : null;
+    editCategory.value = withSub || g.category;
+    if (editCategory.value !== (withSub || g.category)) editCategory.value = g.category; // subcategory since removed
+    if (editCategory.value !== g.category && !(withSub && editCategory.value === withSub)) {
+      // Its category was deleted: offer it as-is so saving doesn't silently move it.
+      editCategory.add(new Option('Uncategorized', g.category), 0);
+      editCategory.value = g.category;
+    }
+    syncEditCategoryDot();
+  }
+
+  function syncEditCategoryDot() { editCategoryDot.style.background = goalDotInfo(editChoice()).color; }
+  editCategory.addEventListener('change', syncEditCategoryDot);
+
+  function renderEditStars(hover) {
+    editStarPicker.querySelectorAll('button').forEach(b => {
+      const v = Number(b.dataset.star);
+      b.classList.toggle('filled', !hover && v <= editStars);
+      b.classList.toggle('preview', !!hover && v <= hover);
+    });
+  }
+  editStarPicker.querySelectorAll('button').forEach(b => {
+    b.addEventListener('click', () => {
+      const v = Number(b.dataset.star);
+      editStars = editStars === v ? 0 : v;
+      renderEditStars();
+    });
+    b.addEventListener('mouseenter', () => renderEditStars(Number(b.dataset.star)));
+  });
+  editStarPicker.addEventListener('mouseleave', () => renderEditStars());
+
+  function editTimeProblem() {
+    const start = editTimeStart.value, end = editTimeEnd.value;
+    if (end && !start) return 'Add a start time too.';
+    if (start && end && end <= start) return 'The end time is before the start time.';
+    return '';
+  }
+  function syncEditValidity() {
+    const problem = settings.timesEnabled ? editTimeProblem() : '';
+    editTimeWarning.textContent = problem;
+    editSaveBtn.disabled = !editText.value.trim() || !!problem;
+  }
+  editText.addEventListener('input', syncEditValidity);
+  editTimeStart.addEventListener('input', syncEditValidity);
+  editTimeEnd.addEventListener('input', syncEditValidity);
+  document.getElementById('editTimeClear').addEventListener('click', () => {
+    editTimeStart.value = '';
+    editTimeEnd.value = '';
+    syncEditValidity();
+    editTimeStart.focus();
+  });
+
+  // list is the goal's day array, which is how its date is found.
+  function openEditGoal(g, list, focusTime) {
+    const dateKey = Object.keys(data).find(k => isDateKey(k) && data[k] === list);
+    if (!dateKey) return;
+    closeRepeatPop(false);
+    closeTimePop(false);
+    editing = { goal: g, dateKey };
+
+    const s = g.seriesId && series.find(x => x.id === g.seriesId);
+    const recurring = !!s && settings.repeatingEnabled;
+    const d = dateFromKey(dateKey);
+    editWhen.innerHTML = '';
+    editWhen.appendChild(document.createTextNode(WEEKDAY_FULL[d.getDay()] + ', ' + shortDate(d) + (d.getFullYear() === new Date().getFullYear() ? '' : ', ' + d.getFullYear())));
+    if (recurring) {
+      const r = document.createElement('span');
+      r.className = 'edit-when-rule';
+      r.innerHTML = REPEAT_ICON_SVG;
+      r.appendChild(document.createTextNode(describeRule(s) + timeSuffix(s.time, s.endTime)));
+      editWhen.appendChild(r);
+    }
+
+    editText.value = g.text;
+    fillEditCategories(g);
+    editStars = g.stars || 0;
+    renderEditStars();
+    editTimeStart.value = g.time || '';
+    editTimeEnd.value = g.endTime || '';
+    document.getElementById('editCategoryField').hidden = !settings.showCategories;
+    document.getElementById('editSignificanceField').hidden = !settings.showSignificance;
+    document.getElementById('editTimeField').hidden = !settings.timesEnabled;
+    editScopeField.hidden = !recurring;
+    editForm.querySelector('input[name="editScope"][value="one"]').checked = true;
+    syncEditValidity();
+
+    editModal.classList.add('open');
+    editOverlay.classList.add('open');
+    const target = focusTime && settings.timesEnabled ? editTimeStart : editText;
+    setTimeout(() => target.focus(), 30);
+  }
+
+  function closeEditGoal() {
+    editing = null;
+    editModal.classList.remove('open');
+    editOverlay.classList.remove('open');
+  }
+
+  // Only what actually changed is carried to other days of a recurring goal,
+  // so a one-off tweak made earlier to a single day isn't overwritten.
+  function applyGoalChanges(t, c) {
+    if ('text' in c) t.text = c.text;
+    if ('category' in c) { t.category = c.category; t.subcategory = c.subcategory; }
+    if ('stars' in c) t.stars = c.stars;
+    if ('time' in c) {
+      if (c.time) t.time = c.time; else delete t.time;
+      if (c.endTime) t.endTime = c.endTime; else delete t.endTime;
+    }
+  }
+
+  editForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!editing || editSaveBtn.disabled) return;
+    const { goal, dateKey } = editing;
+    const changes = {};
+
+    const text = editText.value.trim();
+    if (text !== goal.text) changes.text = text;
+
+    const choice = editChoice();
+    // With subcategories switched off the picker can't show them, so an
+    // unchanged category keeps whatever subcategory it already had.
+    const subcategory = !settings.subcategoriesEnabled && choice.category === goal.category
+      ? (goal.subcategory || null) : choice.subcategory;
+    if (choice.category !== goal.category || subcategory !== (goal.subcategory || null)) {
+      changes.category = choice.category;
+      changes.subcategory = subcategory;
+    }
+
+    if (editStars !== (goal.stars || 0)) changes.stars = editStars;
+
+    if (settings.timesEnabled) {
+      const start = editTimeStart.value || null;
+      const end = start && editTimeEnd.value ? editTimeEnd.value : null;
+      if (start !== (goal.time || null) || end !== (goal.endTime || null)) {
+        changes.time = start;
+        changes.endTime = end;
+      }
+    }
+
+    if (Object.keys(changes).length) {
+      const scope = editScopeField.hidden ? 'one' : editForm.querySelector('input[name="editScope"]:checked').value;
+      if (scope === 'one') {
+        applyGoalChanges(goal, changes);
+      } else {
+        Object.keys(data).forEach(k => {
+          if (!isDateKey(k) || !Array.isArray(data[k]) || (scope === 'upcoming' && k < dateKey)) return;
+          data[k].forEach(x => { if (x.seriesId === goal.seriesId) applyGoalChanges(x, changes); });
+        });
+        const s = series.find(x => x.id === goal.seriesId);
+        if (s) applyGoalChanges(s, changes);
+      }
+      scheduleSave();
+      revealNewGoal(goal);
+    }
+    closeEditGoal();
+    refreshAfterGoalChange();
+    renderRepeatingModal();
+  });
+
+  document.getElementById('editCloseBtn').addEventListener('click', closeEditGoal);
+  document.getElementById('editCancelBtn').addEventListener('click', closeEditGoal);
+  editOverlay.addEventListener('click', closeEditGoal);
+  // Capture phase, so Esc closes just the editor and not the window under it.
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && editing) {
+      e.stopPropagation();
+      closeEditGoal();
+    }
+  }, true);
+
   // ---------- repeating goals: the "Repeating" section ----------
   const repeatingBtn = document.getElementById('repeatingBtn');
   const repeatingModal = document.getElementById('repeatingModal');
@@ -2122,7 +2339,7 @@
       const empty = document.createElement('div');
       empty.className = 'repeat-empty';
       empty.innerHTML = REPEAT_ICON_SVG +
-        '<p class="repeat-empty-title">No repeating goals yet</p>' +
+        '<p class="repeat-empty-title">No recurring goals yet</p>' +
         '<p>Add a goal in the sidebar and tap <strong>Repeat</strong> to have it show up every day, every other day, every week, or every month.</p>';
       repeatingBody.appendChild(empty);
       return;
@@ -2260,7 +2477,7 @@
             dot.title = catInfo.name;
             span.appendChild(dot);
           }
-          if (g.time) {
+          if (g.time && settings.timesEnabled) {
             const t = document.createElement('span');
             t.className = 'pv-time';
             t.textContent = formatTime(g.time);
@@ -2418,6 +2635,9 @@
     document.querySelectorAll('#repeatingEnabledOptions .option-btn').forEach(btn => {
       btn.classList.toggle('active', (btn.dataset.boolValue === 'true') === settings.repeatingEnabled);
     });
+    document.querySelectorAll('#timesEnabledOptions .option-btn').forEach(btn => {
+      btn.classList.toggle('active', (btn.dataset.boolValue === 'true') === settings.timesEnabled);
+    });
   }
 
   function applyVisibilitySettings() {
@@ -2428,6 +2648,8 @@
     dpStarPicker.style.display = settings.showSignificance ? '' : 'none';
     document.getElementById('repeatGroup').style.display = settings.repeatingEnabled ? '' : 'none';
     document.getElementById('repeatingBtn').style.display = settings.repeatingEnabled ? '' : 'none';
+    document.getElementById('timeGroup').style.display = settings.timesEnabled ? '' : 'none';
+    document.querySelector('#sortModeOptions [data-sort-value="time"]').style.display = settings.timesEnabled ? '' : 'none';
     if (!settings.showCategories && categoryFilter !== null) {
       categoryFilter = null;
     }
@@ -2520,6 +2742,23 @@
       saveSettings();
       renderSettingUI();
       if (!settings.dayPreviewEnabled) closeDayPreview();
+    });
+  });
+  document.querySelectorAll('#timesEnabledOptions .option-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      settings.timesEnabled = btn.dataset.boolValue === 'true';
+      if (!settings.timesEnabled) {
+        closeTimePop(false);
+        timeDraft = null;
+        renderTimeBtn();
+        // "Time" isn't offered as a sort while times are off.
+        if (settings.sortMode === 'time') settings.sortMode = 'category';
+      }
+      saveSettings();
+      renderSettingUI();
+      applyVisibilitySettings();
+      refreshAfterGoalChange();
+      renderRepeatingModal();
     });
   });
   document.querySelectorAll('#repeatingEnabledOptions .option-btn').forEach(btn => {
