@@ -1276,6 +1276,9 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
 .sidebar-goal-main { flex: 1; min-width: 0; }
 
 .sidebar-goal-text { font-size: 13.5px; font-weight: 600; line-height: 1.35; word-break: break-word; }
+.sidebar-goal-text[role="button"] { cursor: pointer; border-radius: 4px; transition: color 0.12s ease; }
+.sidebar-goal-text[role="button"]:hover { color: var(--primary); }
+.sidebar-goal-text[role="button"]:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .sidebar-goal-text.done { color: var(--done-strike); text-decoration: line-through; }
 
 .sidebar-goal-meta {
@@ -1308,7 +1311,11 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
   border-radius: 999px;
   white-space: nowrap;
   line-height: 16px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease;
 }
+.time-chip:hover { border-color: var(--primary); color: var(--primary); }
 .time-chip svg { width: 10px; height: 10px; flex: none; color: var(--primary); }
 .sidebar-goal-text.done + .sidebar-goal-meta .time-chip { opacity: 0.6; }
 
@@ -1326,27 +1333,96 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
 }
 .repeat-badge svg { width: 10px; height: 10px; flex: none; }
 
-.goal-reorder {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
+/* ---- drag to reorder ---- */
 
-.reorder-btn {
+.sidebar-goal-row { position: relative; }
+.goal-draggable { padding-left: 20px; cursor: grab; }
+
+/* A six-dot grip in the row's left edge: faint until the row is hovered,
+   always showing on touch screens, where it's the part you drag by. */
+.goal-grip {
+  position: absolute;
+  left: 3px;
+  top: 0;
+  bottom: 0;
+  width: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin: 0;
   background: none;
   border: none;
   color: var(--ink-soft);
-  cursor: pointer;
-  font-size: 8px;
-  line-height: 1;
-  padding: 2px 3px;
-  border-radius: 4px;
-  transition: color 0.15s ease, background 0.15s ease, transform 0.1s cubic-bezier(.4,0,.2,1);
+  opacity: 0;
+  cursor: grab;
+  touch-action: none;
+  transition: opacity 0.15s ease, color 0.15s ease;
 }
-.reorder-btn:hover:not(:disabled) { color: var(--primary); background: var(--primary-soft); }
-.reorder-btn:active:not(:disabled) { transform: scale(0.85); }
-.reorder-btn:disabled { opacity: 0.25; cursor: default; }
+.goal-grip svg { width: 8px; height: 13px; fill: currentColor; }
+.goal-draggable:hover .goal-grip { opacity: 0.55; }
+.goal-grip:hover { opacity: 1 !important; color: var(--primary); }
+.goal-grip:focus-visible { opacity: 1; outline: 2px solid var(--primary); outline-offset: -1px; border-radius: 5px; }
+@media (hover: none) { .goal-grip { opacity: 0.4; } }
+
+/* Picked up: lifted, a little larger, following the pointer (translate
+   isn't transitioned here, so it tracks without lag). */
+.sidebar-goal-row.goal-dragging {
+  z-index: 20;
+  scale: 1.03;
+  cursor: grabbing;
+  background: var(--bg-elevated);
+  border-color: var(--primary);
+  box-shadow: 0 18px 36px var(--shadow), 0 3px 8px var(--shadow);
+  transition: scale 0.18s cubic-bezier(.2,.8,.2,1), box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.goal-dragging .goal-grip { opacity: 1; color: var(--primary); }
+/* The goals being passed glide out of the way. */
+.goal-drag-sibling { transition: translate 0.24s cubic-bezier(.2,.8,.2,1); }
+/* Let go: it eases into its slot and sets back down. */
+.sidebar-goal-row.goal-settling {
+  z-index: 20;
+  transition: translate 0.2s cubic-bezier(.2,.8,.2,1), scale 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+body.goal-drag-active, body.goal-drag-active * { cursor: grabbing !important; user-select: none; -webkit-user-select: none; }
+
+/* Where it landed, a quick glow. */
+@keyframes goalLanded {
+  0% { background: var(--primary-soft); border-color: var(--primary); }
+  100% { background: var(--bg); border-color: var(--line); }
+}
+.sidebar-goal-row.goal-landed { animation: goalLanded 0.7s ease; }
+
+.today-sub-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+.today-sub-row .today-jump { margin-bottom: 0; }
+.order-note[hidden] { display: none; }
+.order-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  background: var(--primary-soft);
+  border-radius: 999px;
+  padding: 2px 3px 2px 8px;
+  animation: popWindowIn 0.18s cubic-bezier(.16,1,.3,1);
+}
+.order-note svg { width: 11px; height: 11px; color: var(--primary); }
+.order-reset-btn {
+  background: var(--bg-elevated);
+  border: none;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--primary);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.order-reset-btn:hover { background: var(--primary); color: #FFFFFF; }
 
 .goal-remove {
   flex: none;
@@ -2131,6 +2207,7 @@ h1.month-title {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--ink-soft);
+  margin: 0; /* overrides the login pages' global label margin */
 }
 
 .repeat-freq-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
@@ -2316,6 +2393,92 @@ h1.month-title {
 .repeat-empty svg { width: 34px; height: 34px; color: var(--primary); opacity: 0.7; margin-bottom: 6px; }
 .repeat-empty p { margin: 0; max-width: 320px; }
 .repeat-empty-title { font-family: 'Sora', sans-serif; font-weight: 700; font-size: 15px; color: var(--ink); }
+
+/* ---- "Edit goal" window ---- */
+
+.edit-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: min(400px, 92vw);
+  max-height: 90vh;
+  transform: translate(-50%, -50%) scale(0.96);
+  background: var(--bg-elevated);
+  border-radius: 16px;
+  box-shadow: 0 30px 70px var(--shadow);
+  z-index: 230;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease, transform 0.16s cubic-bezier(.16,1,.3,1);
+}
+.edit-modal.open { opacity: 1; transform: translate(-50%, -50%) scale(1); pointer-events: auto; }
+.edit-modal [hidden] { display: none !important; }
+#editOverlay.open { z-index: 229; }
+
+.edit-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px 18px 18px;
+  overflow-y: auto;
+}
+.edit-when {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  margin-bottom: -4px;
+}
+.edit-when-rule { display: inline-flex; align-items: center; gap: 4px; color: var(--primary); }
+.edit-when-rule svg { width: 11px; height: 11px; }
+
+.edit-field { display: flex; flex-direction: column; gap: 6px; border: none; margin: 0; padding: 0; min-width: 0; }
+.edit-field .star-picker { padding: 0; }
+
+.edit-select-wrap { position: relative; display: flex; align-items: center; }
+.edit-select-wrap .category-dot { position: absolute; left: 11px; width: 9px; height: 9px; pointer-events: none; }
+.edit-select {
+  width: 100%;
+  font-family: inherit;
+  font-size: 13.5px;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 10px 9px 28px;
+  cursor: pointer;
+  color-scheme: light dark;
+}
+.edit-select:focus { outline: none; border-color: var(--primary); }
+
+.edit-time-row { display: flex; align-items: center; gap: 8px; }
+.edit-time-row .time-input { flex: 1; min-width: 0; font-size: 15px; padding: 7px 8px; }
+.edit-time-sep { font-size: 12.5px; color: var(--ink-soft); flex: none; }
+.edit-time-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 18px; }
+.edit-warning { font-size: 12px; font-weight: 600; color: var(--danger); }
+.edit-link-btn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.edit-link-btn:hover { color: var(--danger); }
+
+.edit-scope { background: var(--primary-soft); border-radius: 10px; padding: 10px 12px; gap: 4px; }
+.edit-scope legend { float: left; width: 100%; margin-bottom: 4px; padding: 0; }
+.edit-scope-option { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; font-weight: 500; color: var(--ink); cursor: pointer; padding: 3px 0; }
+.edit-scope-option input { accent-color: var(--primary); margin: 0; }
 
 .drawer-overlay {
   position: fixed;

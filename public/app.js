@@ -62,7 +62,8 @@
     subgoalsAutoComplete: false,
     dayPreviewEnabled: true,
     subcategoriesEnabled: true,
-    repeatingEnabled: true
+    repeatingEnabled: true,
+    timesEnabled: true
   };
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
@@ -105,6 +106,10 @@
   // seriesId, so checking off, subgoals, filters and calendar dots all
   // work on them unchanged.
   let series = [];
+  // Days arranged by hand: { 'YYYY-MM-DD': true } (persisted as data.__customOrder).
+  // Such a day shows its stored order instead of the automatic sort, until
+  // it's reset or a sort is picked in Settings.
+  let customOrder = {};
   let repeatDraft = null; // repeat settings for the next goal added from the sidebar, or null for "once"
   // Time for the next goal added from the sidebar: { start: 'HH:MM', end: 'HH:MM' | null }, or null.
   // Goals store it as time / endTime (24-hour 'HH:MM', so plain string order is time order).
@@ -125,6 +130,7 @@
       try {
         data.__categories = categories;
         data.__series = series;
+        data.__customOrder = customOrder;
         const res = await fetch('/api/goals', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -666,20 +672,26 @@
     return h ? h + ' hr' + (m ? ' ' + m + ' min' : '') : m + ' min';
   }
   // " at 9:45 AM" / ", 9:45 – 10:45 AM" — appended to a date or repeat description.
+  // With timed goals switched off, stored times are kept but ignored.
   function timeSuffix(start, end) {
-    if (!start) return '';
+    if (!start || !settings.timesEnabled) return '';
     return end ? ', ' + formatTimeRange(start, end) : ' at ' + formatTime(start);
   }
   // Earlier times first; goals without a time after every timed one.
   function compareTime(a, b) {
+    if (!settings.timesEnabled) return 0;
     if (a.time && b.time) return a.time < b.time ? -1 : a.time > b.time ? 1 : 0;
     return a.time ? -1 : b.time ? 1 : 0;
   }
   function compareInGroup(a, b) { return (b.stars || 0) - (a.stars || 0) || compareTime(a, b); }
 
-  function sortGoals(list) {
+  // custom: the day was arranged by hand (dragged), so its stored order wins
+  // over the automatic sort — within each category group, in category mode.
+  function sortGoals(list, custom) {
     const withIndex = list.map((g, i) => ({ g, i }));
-    if (settings.sortMode === 'significance') {
+    if (custom) {
+      // keep the stored order
+    } else if (settings.sortMode === 'significance') {
       withIndex.sort((a, b) => compareInGroup(a.g, b.g) || a.i - b.i);
     } else if (settings.sortMode === 'category') {
       withIndex.sort((a, b) => categoryRank(a.g.category) - categoryRank(b.g.category) || compareInGroup(a.g, b.g) || a.i - b.i);
@@ -693,7 +705,7 @@
   // Buckets goals by category (ordered like the category list, unknown/
   // deleted categories last), each bucket sub-sorted by significance —
   // used by the "sort by category" view's headered grouping.
-  function groupGoalsByCategory(list) {
+  function groupGoalsByCategory(list, custom) {
     const order = [];
     const byCategory = new Map();
     list.forEach(g => {
@@ -703,7 +715,7 @@
     order.sort((a, b) => categoryRank(a) - categoryRank(b));
     return order.map(catId => ({
       category: findCategory(catId) || { id: catId, name: 'Uncategorized', color: '#9AA3B2' },
-      goals: byCategory.get(catId).slice().sort(compareInGroup)
+      goals: custom ? byCategory.get(catId).slice() : byCategory.get(catId).slice().sort(compareInGroup)
     }));
   }
 
@@ -711,10 +723,11 @@
   // category's own subcategory order) plus a "general" bucket for goals
   // with no subcategory (or one that no longer exists) — general goals
   // render last, same convention as "Any" sorting last at the top level.
-  function groupGoalsBySubcategory(goalsInCategory, cat) {
+  function groupGoalsBySubcategory(goalsInCategory, cat, custom) {
+    const ordered = arr => (custom ? arr : arr.sort(compareInGroup));
     const subDefs = settings.subcategoriesEnabled ? ((cat && cat.subcategories) || []) : [];
     if (!subDefs.length) {
-      return { general: goalsInCategory.slice().sort(compareInGroup), subGroups: [] };
+      return { general: ordered(goalsInCategory.slice()), subGroups: [] };
     }
     const bySub = new Map();
     const general = [];
@@ -728,20 +741,30 @@
     });
     const subGroups = subDefs
       .filter(s => bySub.has(s.id))
-      .map(s => ({ subcategory: s, goals: bySub.get(s.id).slice().sort(compareInGroup) }));
-    general.sort(compareInGroup);
+      .map(s => ({ subcategory: s, goals: ordered(bySub.get(s.id).slice()) }));
+    ordered(general);
     return { general, subGroups };
   }
 
-  function moveGoal(fullList, goal, direction) {
-    const idx = fullList.indexOf(goal);
-    const swapIdx = idx + direction;
-    if (idx === -1 || swapIdx < 0 || swapIdx >= fullList.length) return;
-    const tmp = fullList[idx];
-    fullList[idx] = fullList[swapIdx];
-    fullList[swapIdx] = tmp;
-    scheduleSave();
-    refreshAfterGoalChange();
+  // The category view's structure for a day: category groups in category-
+  // list order ("Any" last, since it has no header), each split into its
+  // subcategory groups followed by the category's general goals.
+  function categoryLayout(list, custom) {
+    const groups = groupGoalsByCategory(list, custom);
+    const anyIdx = groups.findIndex(gr => gr.category.id === 'any');
+    if (anyIdx !== -1) groups.push(groups.splice(anyIdx, 1)[0]);
+    return groups.map(gr => Object.assign({ category: gr.category }, groupGoalsBySubcategory(gr.goals, gr.category, custom)));
+  }
+
+  // A day's goals in exactly the order they're shown, headers aside.
+  function displayOrder(list, custom) {
+    if (settings.sortMode !== 'category') return sortGoals(list, custom);
+    const out = [];
+    categoryLayout(list, custom).forEach(gr => {
+      gr.subGroups.forEach(sg => out.push(...sg.goals));
+      out.push(...gr.general);
+    });
+    return out;
   }
 
   // Re-renders every place a goal can currently be shown — the sidebar, the
@@ -766,10 +789,10 @@
   // Builds one goal row, shared by the sidebar list and the day-preview
   // overlay's goal list, including its optional subgoal list and the
   // hover-revealed "+" button for adding a new subgoal.
-  //   opts: { dotOnlyCategory, canReorder, list, displayIdx, onRefresh }
+  //   opts: { dotOnlyCategory, dateKey, dragGroup, onRefresh }
   function buildGoalRowEl(g, fullList, opts) {
     const row = document.createElement('div');
-    row.className = 'sidebar-goal-row goal-row-hoverable';
+    row.className = 'sidebar-goal-row goal-row-hoverable' + (justMovedId === g.id ? ' goal-landed' : '');
 
     const toggle = document.createElement('button');
     toggle.className = 'goal-toggle' + (g.done ? ' checked' : '') + (justCompletedId === g.id ? ' pop' : '');
@@ -788,17 +811,28 @@
     const text = document.createElement('div');
     text.className = 'sidebar-goal-text' + (g.done ? ' done' : '');
     text.textContent = g.text;
+    // The name opens the editor — the one obvious place to click to change a goal.
+    text.setAttribute('role', 'button');
+    text.tabIndex = 0;
+    text.title = 'Edit goal';
+    text.addEventListener('click', () => openEditGoal(g, fullList, false));
+    text.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEditGoal(g, fullList, false); }
+    });
     main.appendChild(text);
 
     const meta = document.createElement('div');
     meta.className = 'sidebar-goal-meta';
-    if (g.time) {
-      const chip = document.createElement('span');
+    if (g.time && settings.timesEnabled) {
+      const chip = document.createElement('button');
+      chip.type = 'button';
       chip.className = 'time-chip';
+      chip.title = 'Change the time';
       chip.innerHTML = CLOCK_ICON_SVG;
       const chipText = document.createElement('span');
       chipText.textContent = formatTimeRange(g.time, g.endTime);
       chip.appendChild(chipText);
+      chip.addEventListener('click', () => openEditGoal(g, fullList, true));
       meta.appendChild(chip);
     }
     const catInfo = settings.showCategories ? goalDisplayInfo(g) : null;
@@ -819,7 +853,7 @@
       const s = series.find(x => x.id === g.seriesId);
       const badge = document.createElement('span');
       badge.className = 'repeat-badge';
-      badge.title = s ? describeRule(s) + timeSuffix(s.time, s.endTime) + ' · ' + formatRange(dateFromKey(s.start), dateFromKey(s.end)) : 'Repeating goal';
+      badge.title = s ? describeRule(s) + timeSuffix(s.time, s.endTime) + ' · ' + formatRange(dateFromKey(s.start), dateFromKey(s.end)) : 'Recurring goal';
       badge.innerHTML = REPEAT_ICON_SVG;
       const badgeText = document.createElement('span');
       badgeText.textContent = s ? shortRuleLabel(s) : 'Repeats';
@@ -953,37 +987,221 @@
       row.appendChild(cluster);
     } else {
       if (settings.subgoalsEnabled) row.appendChild(buildPlusBtn('subgoal-add-btn'));
-
-      if (opts.canReorder) {
-        const reorderWrap = document.createElement('div');
-        reorderWrap.className = 'goal-reorder';
-
-        const up = document.createElement('button');
-        up.type = 'button';
-        up.className = 'reorder-btn';
-        up.innerHTML = '&#9650;';
-        up.setAttribute('aria-label', 'Move up');
-        up.disabled = opts.displayIdx === 0;
-        up.addEventListener('click', () => moveGoal(fullList, g, -1));
-
-        const down = document.createElement('button');
-        down.type = 'button';
-        down.className = 'reorder-btn';
-        down.innerHTML = '&#9660;';
-        down.setAttribute('aria-label', 'Move down');
-        down.disabled = opts.displayIdx === opts.list.length - 1;
-        down.addEventListener('click', () => moveGoal(fullList, g, 1));
-
-        reorderWrap.appendChild(up);
-        reorderWrap.appendChild(down);
-        row.appendChild(reorderWrap);
-      }
-
       row.appendChild(buildRemoveBtn());
     }
 
+    if (opts.dateKey && opts.dragGroup) makeRowDraggable(row, g, fullList, opts);
     return row;
   }
+
+  // ---------- drag to reorder ----------
+  // Works in every sort mode: the picked-up goal follows the pointer while
+  // the goals it passes slide out of its way, then it settles into its slot.
+  // In category mode a goal moves within its own category/subcategory group.
+  const GRIP_SVG = '<svg viewBox="0 0 10 16" aria-hidden="true"><circle cx="2.5" cy="3" r="1.4"/><circle cx="7.5" cy="3" r="1.4"/><circle cx="2.5" cy="8" r="1.4"/><circle cx="7.5" cy="8" r="1.4"/><circle cx="2.5" cy="13" r="1.4"/><circle cx="7.5" cy="13" r="1.4"/></svg>';
+  const rowInfo = new WeakMap(); // row element -> { goal, list, dateKey }
+  const orderNote = document.getElementById('orderNote');
+  let drag = null;              // the drag in progress, if any
+  let suppressClickUntil = 0;   // swallows the click that ends a drag (it'd open the editor)
+  let justMovedId = null;       // goal to flash once where it landed
+
+  document.getElementById('orderResetBtn').addEventListener('click', () => {
+    delete customOrder[keyForDate(selectedDay)];
+    scheduleSave();
+    refreshAfterGoalChange();
+  });
+
+  function makeRowDraggable(row, goal, list, opts) {
+    row.classList.add('goal-draggable');
+    row.dataset.dragGroup = opts.dragGroup;
+    rowInfo.set(row, { goal, list, dateKey: opts.dateKey });
+
+    const grip = document.createElement('button');
+    grip.type = 'button';
+    grip.className = 'goal-grip';
+    grip.dataset.goalId = goal.id;
+    grip.title = 'Drag to reorder';
+    grip.setAttribute('aria-label', 'Move "' + goal.text + '" (drag, or press the up and down arrow keys)');
+    grip.innerHTML = GRIP_SVG;
+    row.insertBefore(grip, row.firstChild);
+
+    row.addEventListener('pointerdown', (e) => onRowPointerDown(e, row));
+    grip.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      e.preventDefault();
+      const rows = groupRows(row);
+      const from = rows.indexOf(row);
+      const to = from + (e.key === 'ArrowUp' ? -1 : 1);
+      if (to < 0 || to >= rows.length) return;
+      const scope = row.closest('#sidebarGoalList, #dpGoalList, #allGoalsBody');
+      commitReorder(row, rows, from, to);
+      const again = scope && scope.querySelector('.goal-grip[data-goal-id="' + goal.id + '"]');
+      if (again) again.focus();
+    });
+  }
+
+  // The rows this one can trade places with: same list, same group.
+  function groupRows(row) {
+    return Array.from(row.parentElement.children)
+      .filter(el => el.classList.contains('goal-draggable') && el.dataset.dragGroup === row.dataset.dragGroup);
+  }
+
+  function onRowPointerDown(e, row) {
+    if (drag || e.button !== 0) return;
+    const onGrip = !!e.target.closest('.goal-grip');
+    // Touch drags only from the grip, so swiping a list still scrolls it; a
+    // mouse can grab the row anywhere that isn't one of its other controls.
+    if (!onGrip && (e.pointerType !== 'mouse' || e.target.closest('button, input, select, textarea, a, label, form'))) return;
+    e.preventDefault(); // no text selection while dragging
+    const press = { row, pointerId: e.pointerId, x: e.clientX, y: e.clientY, type: e.pointerType, threshold: onGrip ? 3 : 6 };
+    const move = (ev) => {
+      if (ev.pointerId !== press.pointerId) return;
+      if (!drag) {
+        if (Math.hypot(ev.clientX - press.x, ev.clientY - press.y) < press.threshold) return;
+        beginDrag(press);
+      }
+      ev.preventDefault();
+      drag.lastY = ev.clientY;
+      updateDrag();
+    };
+    const up = (ev) => {
+      if (ev.pointerId !== press.pointerId) return;
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      if (drag) endDrag(ev.type === 'pointercancel');
+    };
+    window.addEventListener('pointermove', move, { passive: false });
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  }
+
+  function findScroller(el) {
+    for (let n = el.parentElement; n && n !== document.body; n = n.parentElement) {
+      const oy = getComputedStyle(n).overflowY;
+      if ((oy === 'auto' || oy === 'scroll') && n.scrollHeight > n.clientHeight) return n;
+    }
+    return document.scrollingElement;
+  }
+  function scrollTopOf(s) { return s === document.scrollingElement ? window.scrollY : s.scrollTop; }
+
+  function beginDrag(press) {
+    const row = press.row;
+    const rows = groupRows(row);
+    const scroller = findScroller(row);
+    const st = scrollTopOf(scroller);
+    // Positions are kept in scroll-content coordinates so auto-scrolling
+    // mid-drag doesn't throw the math off.
+    const tops = rows.map(r => r.getBoundingClientRect().top + st);
+    const heights = rows.map(r => r.offsetHeight);
+    const gap = rows.length > 1 ? Math.max(0, tops[1] - tops[0] - heights[0]) : 8;
+    drag = { row, rows, tops, heights, gap, d: rows.indexOf(row), T: rows.indexOf(row), scroller, startY: press.y + st, lastY: press.y, raf: 0 };
+    if (window.getSelection) window.getSelection().removeAllRanges();
+    document.body.classList.add('goal-drag-active');
+    row.classList.add('goal-dragging');
+    rows.forEach(r => { if (r !== row) r.classList.add('goal-drag-sibling'); });
+    if (press.type === 'touch' && navigator.vibrate) navigator.vibrate(8);
+    drag.raf = requestAnimationFrame(autoScroll);
+  }
+
+  function updateDrag() {
+    const { row, rows, tops, heights, d } = drag;
+    const last = rows.length - 1;
+    // Follows the pointer, but only a little past its group's first/last
+    // slot — a gentle hint that it can't leave its section.
+    const give = 10;
+    let dy = drag.lastY + scrollTopOf(drag.scroller) - drag.startY;
+    dy = Math.max(tops[0] - tops[d] - give, Math.min(dy, tops[last] + heights[last] - tops[d] - heights[d] + give));
+    row.style.translate = '0 ' + dy + 'px';
+
+    const center = tops[d] + heights[d] / 2 + dy;
+    let T = d;
+    for (let i = 0; i < d; i++) if (center < tops[i] + heights[i] / 2) { T = i; break; }
+    for (let i = last; i > d; i--) if (center > tops[i] + heights[i] / 2) { T = i; break; }
+    if (T === drag.T) return;
+    drag.T = T;
+    const shift = heights[d] + drag.gap;
+    rows.forEach((r, i) => {
+      if (i === d) return;
+      const off = (T > d && i > d && i <= T) ? -shift : (T < d && i >= T && i < d) ? shift : 0;
+      r.style.translate = off ? '0 ' + off + 'px' : '';
+    });
+  }
+
+  // Scrolls the list when a dragged goal is held near its top or bottom edge.
+  function autoScroll() {
+    if (!drag) return;
+    const s = drag.scroller;
+    const isDoc = s === document.scrollingElement;
+    const box = isDoc ? { top: 0, bottom: window.innerHeight } : s.getBoundingClientRect();
+    const zone = 44;
+    let v = 0;
+    if (drag.lastY < box.top + zone) v = -Math.min(14, Math.ceil((box.top + zone - drag.lastY) / 4));
+    else if (drag.lastY > box.bottom - zone) v = Math.min(14, Math.ceil((drag.lastY - (box.bottom - zone)) / 4));
+    if (v) {
+      const before = scrollTopOf(s);
+      if (isDoc) window.scrollBy(0, v); else s.scrollTop += v;
+      if (scrollTopOf(s) !== before) updateDrag();
+    }
+    drag.raf = requestAnimationFrame(autoScroll);
+  }
+
+  function endDrag(cancelled) {
+    const { row, rows, heights, gap, d } = drag;
+    const T = cancelled ? d : drag.T;
+    cancelAnimationFrame(drag.raf);
+    drag = null;
+    document.body.classList.remove('goal-drag-active');
+    suppressClickUntil = Date.now() + 350;
+
+    // Glide into the slot the other goals opened up, then commit.
+    let settle = 0;
+    for (let i = d + 1; i <= T; i++) settle += heights[i] + gap;
+    for (let i = T; i < d; i++) settle -= heights[i] + gap;
+    if (cancelled) rows.forEach(r => { if (r !== row) r.style.translate = ''; });
+    row.classList.remove('goal-dragging');
+    row.classList.add('goal-settling');
+    row.style.translate = '0 ' + settle + 'px';
+    setTimeout(() => {
+      if (T !== d) {
+        commitReorder(row, rows, d, T);
+      } else {
+        row.classList.remove('goal-settling');
+        rows.forEach(r => { r.style.translate = ''; r.classList.remove('goal-drag-sibling'); });
+      }
+    }, 200);
+  }
+
+  // Moves rows[from] to position `to` within its group and saves it.
+  function commitReorder(row, rows, from, to) {
+    const { goal, list, dateKey } = rowInfo.get(row);
+    const groupGoals = rows.map(r => rowInfo.get(r).goal);
+    const moved = groupGoals.slice();
+    moved.splice(to, 0, moved.splice(from, 1)[0]);
+    if (settings.sortMode !== 'manual') {
+      // Pin the day to exactly what's on screen first, so the dragged goal
+      // is the only thing that moves.
+      if (!customOrder[dateKey]) list.splice(0, list.length, ...displayOrder(list, false));
+      customOrder[dateKey] = true;
+    }
+    // The group's goals go back into the slots they already occupy, in the
+    // new order — goals outside the group (other categories, filtered-out
+    // ones) stay exactly where they were.
+    const slots = groupGoals.map(x => list.indexOf(x)).sort((a, b) => a - b);
+    slots.forEach((slot, i) => { list[slot] = moved[i]; });
+    scheduleSave();
+    justMovedId = goal.id;
+    refreshAfterGoalChange();
+    justMovedId = null;
+  }
+
+  document.addEventListener('click', (e) => {
+    if (Date.now() < suppressClickUntil) {
+      suppressClickUntil = 0;
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  }, true);
 
   // ---------- sidebar today/day panel ----------
   function renderSidebarHead() {
@@ -1008,10 +1226,11 @@
   }
 
   // Renders a goal list into a container, either as a flat list (sorted by
-  // significance or in manual order) or, in "sort by category" mode,
-  // grouped under a header per category with each group sub-sorted by
-  // significance — shared by the sidebar and the day-preview window.
-  //   opts: { dotOnlyCategory, canReorder, onRefresh }
+  // significance or time, or in manual order) or, in "sort by category"
+  // mode, grouped under a header per category with each group sub-sorted
+  // by significance — shared by the sidebar, day preview and "All goals".
+  //   opts: { dateKey, dotOnlyCategory, showCategoryHeaders, onRefresh }
+  // Each row is tagged with the group it can be dragged within.
   function renderGoalListInto(container, fullList, filteredList, opts) {
     container.innerHTML = '';
 
@@ -1023,12 +1242,10 @@
       return;
     }
 
+    const custom = !!(opts.dateKey && customOrder[opts.dateKey]);
+
     if (settings.sortMode === 'category') {
-      const groups = groupGoalsByCategory(filteredList);
-      // "Any" carries no meaningful tag, so it gets no header and sits
-      // last instead of wherever it would otherwise rank.
-      const anyIdx = groups.findIndex(gr => gr.category.id === 'any');
-      if (anyIdx !== -1) groups.push(groups.splice(anyIdx, 1)[0]);
+      const groups = categoryLayout(filteredList, custom);
 
       // Collapsing only makes sense where a header is actually shown (the
       // day-preview hides headers for compactness) — otherwise a category
@@ -1036,10 +1253,11 @@
       // from an unrelated, header-less view.
       const collapsible = !!opts.showCategoryHeaders;
 
-      const appendGoalRow = (g, indent) => {
+      const appendGoalRow = (g, indent, dragGroup) => {
         const row = buildGoalRowEl(g, fullList, {
           dotOnlyCategory: true,
-          canReorder: false,
+          dateKey: opts.dateKey,
+          dragGroup,
           onRefresh: opts.onRefresh
         });
         // Pushed slightly right so a subcategory's goals read as visually
@@ -1075,7 +1293,7 @@
 
         if (groupCollapsed) return;
 
-        const { general, subGroups } = groupGoalsBySubcategory(group.goals, group.category);
+        const { general, subGroups } = group;
         subGroups.forEach(sg => {
           const subKey = 'sub:' + group.category.id + ':' + sg.subcategory.id;
           const subCollapsed = collapsible && collapsedGroups.has(subKey);
@@ -1098,18 +1316,16 @@
             container.appendChild(subHeader);
           }
           if (subCollapsed) return;
-          sg.goals.forEach(g => appendGoalRow(g, true));
+          sg.goals.forEach(g => appendGoalRow(g, true, subKey));
         });
-        general.forEach(g => appendGoalRow(g, false));
+        general.forEach(g => appendGoalRow(g, false, groupKey));
       });
     } else {
-      const list = sortGoals(filteredList);
-      list.forEach((g, displayIdx) => {
+      sortGoals(filteredList, custom).forEach(g => {
         container.appendChild(buildGoalRowEl(g, fullList, {
           dotOnlyCategory: opts.dotOnlyCategory,
-          canReorder: opts.canReorder,
-          list,
-          displayIdx,
+          dateKey: opts.dateKey,
+          dragGroup: 'all',
           onRefresh: opts.onRefresh
         }));
       });
@@ -1121,14 +1337,15 @@
     const k = keyForDate(selectedDay);
     const fullList = data[k] || [];
     const filteredList = categoryFilter ? fullList.filter(g => g.category === categoryFilter) : fullList;
-    const canReorder = settings.sortMode === 'manual' && !categoryFilter;
 
     renderGoalListInto(sidebarGoalList, fullList, filteredList, {
+      dateKey: k,
       dotOnlyCategory: false,
-      canReorder,
       showCategoryHeaders: true,
       onRefresh: refreshAfterGoalChange
     });
+    // A hand-arranged day says so, with a way back to automatic sorting.
+    orderNote.hidden = !(customOrder[k] && settings.sortMode !== 'manual' && fullList.length > 1);
     focusOpenSubgoalInput(sidebarGoalList);
   }
 
@@ -1174,8 +1391,8 @@
       const dateGroup = document.createElement('div');
       dateGroup.className = 'all-goals-date-group';
       renderGoalListInto(dateGroup, fullList, filteredList, {
+        dateKey: k,
         dotOnlyCategory: true,
-        canReorder: false,
         showCategoryHeaders: true,
         onRefresh: refreshAfterGoalChange
       });
@@ -1237,8 +1454,8 @@
     const filteredList = categoryFilter ? fullList.filter(g => g.category === categoryFilter) : fullList;
 
     renderGoalListInto(dpGoalList, fullList, filteredList, {
+      dateKey: k,
       dotOnlyCategory: true,
-      canReorder: false,
       showCategoryHeaders: false,
       onRefresh: refreshAfterGoalChange
     });
@@ -1956,6 +2173,209 @@
   window.addEventListener('resize', () => positionPopover(timePop, timeBtn));
   document.addEventListener('scroll', () => positionPopover(timePop, timeBtn), true);
 
+  // ---------- editing a goal ----------
+  const editModal = document.getElementById('editModal');
+  const editOverlay = document.getElementById('editOverlay');
+  const editForm = document.getElementById('editForm');
+  const editWhen = document.getElementById('editWhen');
+  const editText = document.getElementById('editText');
+  const editCategory = document.getElementById('editCategory');
+  const editCategoryDot = document.getElementById('editCategoryDot');
+  const editStarPicker = document.getElementById('editStarPicker');
+  const editTimeStart = document.getElementById('editTimeStart');
+  const editTimeEnd = document.getElementById('editTimeEnd');
+  const editTimeWarning = document.getElementById('editTimeWarning');
+  const editSaveBtn = document.getElementById('editSaveBtn');
+  const editScopeField = document.getElementById('editScopeField');
+  let editing = null; // { goal, dateKey } while the editor is open
+  let editStars = 0;
+
+  // The picker's value is 'categoryId' or 'categoryId::subcategoryId'.
+  function editChoice() {
+    const [category, subcategory] = editCategory.value.split('::');
+    return { category, subcategory: subcategory || null };
+  }
+
+  function fillEditCategories(g) {
+    editCategory.innerHTML = '';
+    allCategories().forEach(cat => {
+      editCategory.add(new Option(cat.name, cat.id));
+      if (!settings.subcategoriesEnabled) return;
+      (cat.subcategories || []).forEach(sub => {
+        editCategory.add(new Option('   ' + cat.name + ' — ' + sub.name, cat.id + '::' + sub.id));
+      });
+    });
+    const withSub = settings.subcategoriesEnabled && g.subcategory ? g.category + '::' + g.subcategory : null;
+    editCategory.value = withSub || g.category;
+    if (editCategory.value !== (withSub || g.category)) editCategory.value = g.category; // subcategory since removed
+    if (editCategory.value !== g.category && !(withSub && editCategory.value === withSub)) {
+      // Its category was deleted: offer it as-is so saving doesn't silently move it.
+      editCategory.add(new Option('Uncategorized', g.category), 0);
+      editCategory.value = g.category;
+    }
+    syncEditCategoryDot();
+  }
+
+  function syncEditCategoryDot() { editCategoryDot.style.background = goalDotInfo(editChoice()).color; }
+  editCategory.addEventListener('change', syncEditCategoryDot);
+
+  function renderEditStars(hover) {
+    editStarPicker.querySelectorAll('button').forEach(b => {
+      const v = Number(b.dataset.star);
+      b.classList.toggle('filled', !hover && v <= editStars);
+      b.classList.toggle('preview', !!hover && v <= hover);
+    });
+  }
+  editStarPicker.querySelectorAll('button').forEach(b => {
+    b.addEventListener('click', () => {
+      const v = Number(b.dataset.star);
+      editStars = editStars === v ? 0 : v;
+      renderEditStars();
+    });
+    b.addEventListener('mouseenter', () => renderEditStars(Number(b.dataset.star)));
+  });
+  editStarPicker.addEventListener('mouseleave', () => renderEditStars());
+
+  function editTimeProblem() {
+    const start = editTimeStart.value, end = editTimeEnd.value;
+    if (end && !start) return 'Add a start time too.';
+    if (start && end && end <= start) return 'The end time is before the start time.';
+    return '';
+  }
+  function syncEditValidity() {
+    const problem = settings.timesEnabled ? editTimeProblem() : '';
+    editTimeWarning.textContent = problem;
+    editSaveBtn.disabled = !editText.value.trim() || !!problem;
+  }
+  editText.addEventListener('input', syncEditValidity);
+  editTimeStart.addEventListener('input', syncEditValidity);
+  editTimeEnd.addEventListener('input', syncEditValidity);
+  document.getElementById('editTimeClear').addEventListener('click', () => {
+    editTimeStart.value = '';
+    editTimeEnd.value = '';
+    syncEditValidity();
+    editTimeStart.focus();
+  });
+
+  // list is the goal's day array, which is how its date is found.
+  function openEditGoal(g, list, focusTime) {
+    const dateKey = Object.keys(data).find(k => isDateKey(k) && data[k] === list);
+    if (!dateKey) return;
+    closeRepeatPop(false);
+    closeTimePop(false);
+    editing = { goal: g, dateKey };
+
+    const s = g.seriesId && series.find(x => x.id === g.seriesId);
+    const recurring = !!s && settings.repeatingEnabled;
+    const d = dateFromKey(dateKey);
+    editWhen.innerHTML = '';
+    editWhen.appendChild(document.createTextNode(WEEKDAY_FULL[d.getDay()] + ', ' + shortDate(d) + (d.getFullYear() === new Date().getFullYear() ? '' : ', ' + d.getFullYear())));
+    if (recurring) {
+      const r = document.createElement('span');
+      r.className = 'edit-when-rule';
+      r.innerHTML = REPEAT_ICON_SVG;
+      r.appendChild(document.createTextNode(describeRule(s) + timeSuffix(s.time, s.endTime)));
+      editWhen.appendChild(r);
+    }
+
+    editText.value = g.text;
+    fillEditCategories(g);
+    editStars = g.stars || 0;
+    renderEditStars();
+    editTimeStart.value = g.time || '';
+    editTimeEnd.value = g.endTime || '';
+    document.getElementById('editCategoryField').hidden = !settings.showCategories;
+    document.getElementById('editSignificanceField').hidden = !settings.showSignificance;
+    document.getElementById('editTimeField').hidden = !settings.timesEnabled;
+    editScopeField.hidden = !recurring;
+    editForm.querySelector('input[name="editScope"][value="one"]').checked = true;
+    syncEditValidity();
+
+    editModal.classList.add('open');
+    editOverlay.classList.add('open');
+    const target = focusTime && settings.timesEnabled ? editTimeStart : editText;
+    setTimeout(() => target.focus(), 30);
+  }
+
+  function closeEditGoal() {
+    editing = null;
+    editModal.classList.remove('open');
+    editOverlay.classList.remove('open');
+  }
+
+  // Only what actually changed is carried to other days of a recurring goal,
+  // so a one-off tweak made earlier to a single day isn't overwritten.
+  function applyGoalChanges(t, c) {
+    if ('text' in c) t.text = c.text;
+    if ('category' in c) { t.category = c.category; t.subcategory = c.subcategory; }
+    if ('stars' in c) t.stars = c.stars;
+    if ('time' in c) {
+      if (c.time) t.time = c.time; else delete t.time;
+      if (c.endTime) t.endTime = c.endTime; else delete t.endTime;
+    }
+  }
+
+  editForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!editing || editSaveBtn.disabled) return;
+    const { goal, dateKey } = editing;
+    const changes = {};
+
+    const text = editText.value.trim();
+    if (text !== goal.text) changes.text = text;
+
+    const choice = editChoice();
+    // With subcategories switched off the picker can't show them, so an
+    // unchanged category keeps whatever subcategory it already had.
+    const subcategory = !settings.subcategoriesEnabled && choice.category === goal.category
+      ? (goal.subcategory || null) : choice.subcategory;
+    if (choice.category !== goal.category || subcategory !== (goal.subcategory || null)) {
+      changes.category = choice.category;
+      changes.subcategory = subcategory;
+    }
+
+    if (editStars !== (goal.stars || 0)) changes.stars = editStars;
+
+    if (settings.timesEnabled) {
+      const start = editTimeStart.value || null;
+      const end = start && editTimeEnd.value ? editTimeEnd.value : null;
+      if (start !== (goal.time || null) || end !== (goal.endTime || null)) {
+        changes.time = start;
+        changes.endTime = end;
+      }
+    }
+
+    if (Object.keys(changes).length) {
+      const scope = editScopeField.hidden ? 'one' : editForm.querySelector('input[name="editScope"]:checked').value;
+      if (scope === 'one') {
+        applyGoalChanges(goal, changes);
+      } else {
+        Object.keys(data).forEach(k => {
+          if (!isDateKey(k) || !Array.isArray(data[k]) || (scope === 'upcoming' && k < dateKey)) return;
+          data[k].forEach(x => { if (x.seriesId === goal.seriesId) applyGoalChanges(x, changes); });
+        });
+        const s = series.find(x => x.id === goal.seriesId);
+        if (s) applyGoalChanges(s, changes);
+      }
+      scheduleSave();
+      revealNewGoal(goal);
+    }
+    closeEditGoal();
+    refreshAfterGoalChange();
+    renderRepeatingModal();
+  });
+
+  document.getElementById('editCloseBtn').addEventListener('click', closeEditGoal);
+  document.getElementById('editCancelBtn').addEventListener('click', closeEditGoal);
+  editOverlay.addEventListener('click', closeEditGoal);
+  // Capture phase, so Esc closes just the editor and not the window under it.
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && editing) {
+      e.stopPropagation();
+      closeEditGoal();
+    }
+  }, true);
+
   // ---------- repeating goals: the "Repeating" section ----------
   const repeatingBtn = document.getElementById('repeatingBtn');
   const repeatingModal = document.getElementById('repeatingModal');
@@ -2122,7 +2542,7 @@
       const empty = document.createElement('div');
       empty.className = 'repeat-empty';
       empty.innerHTML = REPEAT_ICON_SVG +
-        '<p class="repeat-empty-title">No repeating goals yet</p>' +
+        '<p class="repeat-empty-title">No recurring goals yet</p>' +
         '<p>Add a goal in the sidebar and tap <strong>Repeat</strong> to have it show up every day, every other day, every week, or every month.</p>';
       repeatingBody.appendChild(empty);
       return;
@@ -2249,7 +2669,7 @@
       if (goals.length) {
         const preview = document.createElement('div');
         preview.className = 'goal-preview';
-        sortGoals(goals).slice(0, 2).forEach(g => {
+        displayOrder(goals, customOrder[k]).slice(0, 2).forEach(g => {
           const span = document.createElement('span');
           span.className = 'pv-item' + (g.done ? ' done' : '');
           const catInfo = settings.showCategories ? goalDisplayInfo(g) : null;
@@ -2260,7 +2680,7 @@
             dot.title = catInfo.name;
             span.appendChild(dot);
           }
-          if (g.time) {
+          if (g.time && settings.timesEnabled) {
             const t = document.createElement('span');
             t.className = 'pv-time';
             t.textContent = formatTime(g.time);
@@ -2288,7 +2708,7 @@
           // in for the day's goal count, so it must always add up to
           // "goals.length", or a goal can silently vanish from it with no
           // "+N" to explain the gap.
-          const dotCats = sortGoals(goals).map(goalDotInfo);
+          const dotCats = displayOrder(goals, customOrder[k]).map(goalDotInfo);
           // Cap to one row instead of letting dots wrap — a wrapped second
           // row grows the cell taller than its grid row expects and ends
           // up visually swallowed by the next row of cells underneath it.
@@ -2418,6 +2838,9 @@
     document.querySelectorAll('#repeatingEnabledOptions .option-btn').forEach(btn => {
       btn.classList.toggle('active', (btn.dataset.boolValue === 'true') === settings.repeatingEnabled);
     });
+    document.querySelectorAll('#timesEnabledOptions .option-btn').forEach(btn => {
+      btn.classList.toggle('active', (btn.dataset.boolValue === 'true') === settings.timesEnabled);
+    });
   }
 
   function applyVisibilitySettings() {
@@ -2428,6 +2851,8 @@
     dpStarPicker.style.display = settings.showSignificance ? '' : 'none';
     document.getElementById('repeatGroup').style.display = settings.repeatingEnabled ? '' : 'none';
     document.getElementById('repeatingBtn').style.display = settings.repeatingEnabled ? '' : 'none';
+    document.getElementById('timeGroup').style.display = settings.timesEnabled ? '' : 'none';
+    document.querySelector('#sortModeOptions [data-sort-value="time"]').style.display = settings.timesEnabled ? '' : 'none';
     if (!settings.showCategories && categoryFilter !== null) {
       categoryFilter = null;
     }
@@ -2465,8 +2890,21 @@
   });
   document.querySelectorAll('#sortModeOptions .option-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      settings.sortMode = btn.dataset.sortValue;
+      const mode = btn.dataset.sortValue;
+      if (mode === 'manual' && settings.sortMode !== 'manual') {
+        // Manual just stops the automatic sorting: every day keeps the order
+        // it's showing right now, and from then on only moves when dragged.
+        Object.keys(data).forEach(k => {
+          if (isDateKey(k) && Array.isArray(data[k]) && data[k].length > 1) {
+            data[k].splice(0, data[k].length, ...displayOrder(data[k], customOrder[k]));
+          }
+        });
+      }
+      // Picking a sort applies it everywhere, re-sorting hand-arranged days too.
+      customOrder = {};
+      settings.sortMode = mode;
       saveSettings();
+      scheduleSave();
       renderSettingUI();
       renderSidebarGoals();
       renderDayPreview();
@@ -2520,6 +2958,23 @@
       saveSettings();
       renderSettingUI();
       if (!settings.dayPreviewEnabled) closeDayPreview();
+    });
+  });
+  document.querySelectorAll('#timesEnabledOptions .option-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      settings.timesEnabled = btn.dataset.boolValue === 'true';
+      if (!settings.timesEnabled) {
+        closeTimePop(false);
+        timeDraft = null;
+        renderTimeBtn();
+        // "Time" isn't offered as a sort while times are off.
+        if (settings.sortMode === 'time') settings.sortMode = 'category';
+      }
+      saveSettings();
+      renderSettingUI();
+      applyVisibilitySettings();
+      refreshAfterGoalChange();
+      renderRepeatingModal();
     });
   });
   document.querySelectorAll('#repeatingEnabledOptions .option-btn').forEach(btn => {
@@ -2602,6 +3057,7 @@
         ? data.__categories
         : DEFAULT_CATEGORIES.map(c => Object.assign({}, c));
       series = Array.isArray(data.__series) ? data.__series : [];
+      customOrder = data.__customOrder && typeof data.__customOrder === 'object' && !Array.isArray(data.__customOrder) ? data.__customOrder : {};
     } catch (e) {
       console.error('Could not load goals', e);
     }
