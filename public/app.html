@@ -51,6 +51,12 @@
         </span>
       </div>
 
+      <div class="pushed-note" id="pushedNote" role="status" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h12M10 6l6 6-6 6"/><path d="M21 5v14"/></svg>
+        <span id="pushedNoteText"></span>
+        <button type="button" class="pushed-note-close" id="pushedNoteClose" aria-label="Dismiss">&#10005;</button>
+      </div>
+
       <div class="sidebar-goal-list" id="sidebarGoalList"></div>
 
       <form class="add-goal-form" id="sidebarAddForm">
@@ -384,6 +390,27 @@
         <button class="option-btn" data-bool-value="false">Off</button>
       </div>
       <p class="drawer-footnote" style="margin-top:8px;">Adds a Repeat button next to Significance when you add a goal, and a Recurring Goals section to manage them. Turning it off hides both. Goals already on your calendar stay where they are.</p>
+    </div>
+    <div>
+      <div class="setting-group-title">Unfinished goals</div>
+      <div class="option-row" id="pushToTodayOptions">
+        <span class="toggle-row-label">Push to today</span>
+        <button class="option-btn" data-bool-value="true">On</button>
+        <button class="option-btn" data-bool-value="false">Off</button>
+      </div>
+      <div class="setting-sub" id="pushUntimedOnlyRow" hidden>
+        <div class="option-row" id="pushUntimedOnlyOptions">
+          <span class="toggle-row-label">Only untimed goals</span>
+          <button class="option-btn" data-bool-value="true">On</button>
+          <button class="option-btn" data-bool-value="false">Off</button>
+        </div>
+        <p class="drawer-footnote">Goals with a set time stay on their own day.</p>
+      </div>
+      <div class="push-result" id="pushResult" role="status" hidden>
+        <span id="pushResultText"></span>
+        <button type="button" class="push-undo-btn" id="pushUndoBtn">Undo</button>
+      </div>
+      <p class="drawer-footnote" style="margin-top:8px;">Goals you didn't check off on an earlier day move to today, so nothing gets left behind. Finished goals and recurring goals stay on their own days.</p>
     </div>
     <div>
       <div class="setting-group-title">Categories</div>

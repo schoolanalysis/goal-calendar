@@ -1419,7 +1419,9 @@ body.goal-drag-active, body.goal-drag-active * { cursor: grabbing !important; us
   animation: popWindowIn 0.18s cubic-bezier(.16,1,.3,1);
 }
 .order-note svg { width: 11px; height: 11px; color: var(--primary); }
-.order-reset-btn {
+.order-reset-btn,
+.push-undo-btn {
+  flex: none;
   background: var(--bg-elevated);
   border: none;
   border-radius: 999px;
@@ -1431,7 +1433,40 @@ body.goal-drag-active, body.goal-drag-active * { cursor: grabbing !important; us
   cursor: pointer;
   transition: background 0.12s ease, color 0.12s ease;
 }
-.order-reset-btn:hover { background: var(--primary); color: #FFFFFF; }
+.order-reset-btn:hover,
+.push-undo-btn:hover { background: var(--primary); color: #FFFFFF; }
+
+/* Says which unfinished goals just moved to today on their own. */
+.pushed-note[hidden] { display: none; }
+.pushed-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 7px 5px 7px 10px;
+  border-radius: 10px;
+  background: var(--primary-soft);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  animation: popWindowIn 0.18s cubic-bezier(.16,1,.3,1);
+}
+.pushed-note svg { flex: none; width: 14px; height: 14px; color: var(--primary); }
+.pushed-note span { flex: 1; min-width: 0; }
+.pushed-note-close {
+  flex: none;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+.pushed-note-close:hover { color: var(--ink); background: var(--bg-elevated); }
 
 .goal-remove {
   flex: none;
@@ -2575,6 +2610,40 @@ h1.month-title {
 #showSignificanceOptions .option-btn { flex: none; min-width: 48px; }
 
 .drawer-footnote { font-size: 12px; color: var(--ink-soft); }
+
+/* A setting that belongs to the one above it: hung off it by a rule on the
+   left, shown only while that one is on. */
+.setting-sub[hidden] { display: none; }
+.setting-sub {
+  margin: 8px 0 0 8px;
+  padding: 2px 0 2px 12px;
+  border-left: 2px solid var(--line);
+  animation: settingSubIn 0.2s cubic-bezier(.16,1,.3,1);
+}
+.setting-sub .drawer-footnote { margin: 6px 0 0; }
+@keyframes settingSubIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+#pushToTodayOptions .option-btn,
+#pushUntimedOnlyOptions .option-btn { flex: none; min-width: 48px; }
+
+.push-result[hidden] { display: none; }
+.push-result {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 6px 5px 6px 10px;
+  border-radius: 8px;
+  background: var(--primary-soft);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  animation: popWindowIn 0.18s cubic-bezier(.16,1,.3,1);
+}
+.push-result span { flex: 1; min-width: 0; }
+.push-undo-btn[hidden] { display: none; }
 
 /* ---- modal (day detail, legacy support) ---- */
 
