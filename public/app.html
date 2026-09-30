@@ -51,6 +51,19 @@
         </span>
       </div>
 
+      <div class="pushed-note reveal" id="pushedNote" role="status">
+        <div class="reveal-inner">
+          <div class="pushed-note-box">
+            <span class="pushed-note-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h11M11 7l5 5-5 5"/><path d="M20 5v14"/></svg></span>
+            <span class="pushed-note-body">
+              <span class="pushed-note-title" id="pushedNoteTitle"></span>
+              <span class="pushed-note-sub" id="pushedNoteSub"></span>
+            </span>
+            <button type="button" class="pushed-note-close" id="pushedNoteClose" aria-label="Dismiss">&#10005;</button>
+          </div>
+        </div>
+      </div>
+
       <div class="sidebar-goal-list" id="sidebarGoalList"></div>
 
       <form class="add-goal-form" id="sidebarAddForm">
@@ -384,6 +397,34 @@
         <button class="option-btn" data-bool-value="false">Off</button>
       </div>
       <p class="drawer-footnote" style="margin-top:8px;">Adds a Repeat button next to Significance when you add a goal, and a Recurring Goals section to manage them. Turning it off hides both. Goals already on your calendar stay where they are.</p>
+    </div>
+    <div>
+      <div class="setting-group-title">Unfinished goals</div>
+      <div class="option-row" id="pushToTodayOptions">
+        <span class="toggle-row-label">Push to today</span>
+        <button class="option-btn" data-bool-value="true">On</button>
+        <button class="option-btn" data-bool-value="false">Off</button>
+      </div>
+      <div class="setting-sub reveal" id="pushUntimedOnlyRow">
+        <div class="reveal-inner">
+          <div class="option-row" id="pushUntimedOnlyOptions">
+            <span class="toggle-row-label">Only untimed goals</span>
+            <button class="option-btn" data-bool-value="true">On</button>
+            <button class="option-btn" data-bool-value="false">Off</button>
+          </div>
+          <p class="drawer-footnote">Goals with a set time stay on their own day.</p>
+        </div>
+      </div>
+      <div class="push-result reveal" id="pushResult" role="status">
+        <div class="reveal-inner">
+          <div class="push-result-box" id="pushResultBox">
+            <span class="push-result-icon" id="pushResultIcon" aria-hidden="true"></span>
+            <span class="push-result-text" id="pushResultText"></span>
+            <button type="button" class="push-undo-btn" id="pushUndoBtn">Undo</button>
+          </div>
+        </div>
+      </div>
+      <p class="drawer-footnote" style="margin-top:10px;">Goals you didn't check off on an earlier day move to today, so nothing gets left behind. Finished and recurring goals stay on their own days.</p>
     </div>
     <div>
       <div class="setting-group-title">Categories</div>

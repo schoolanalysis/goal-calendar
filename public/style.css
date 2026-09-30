@@ -1419,7 +1419,9 @@ body.goal-drag-active, body.goal-drag-active * { cursor: grabbing !important; us
   animation: popWindowIn 0.18s cubic-bezier(.16,1,.3,1);
 }
 .order-note svg { width: 11px; height: 11px; color: var(--primary); }
-.order-reset-btn {
+.order-reset-btn,
+.push-undo-btn {
+  flex: none;
   background: var(--bg-elevated);
   border: none;
   border-radius: 999px;
@@ -1431,7 +1433,61 @@ body.goal-drag-active, body.goal-drag-active * { cursor: grabbing !important; us
   cursor: pointer;
   transition: background 0.12s ease, color 0.12s ease;
 }
-.order-reset-btn:hover { background: var(--primary); color: #FFFFFF; }
+.order-reset-btn:hover,
+.push-undo-btn:hover { background: var(--primary); color: #FFFFFF; }
+
+/* Says which unfinished goals just moved to today, and from when. */
+.pushed-note-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 9px 7px 9px 9px;
+  border-radius: 12px;
+  background: var(--primary-soft);
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, transparent);
+}
+.pushed-note-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #FFFFFF;
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--primary) 35%, transparent);
+}
+.pushed-note-icon svg { width: 14px; height: 14px; }
+.pushed-note-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.pushed-note-title { font-size: 12.5px; font-weight: 700; color: var(--ink); }
+.pushed-note-sub { font-size: 11.5px; color: var(--ink-soft); }
+.pushed-note-close {
+  flex: none;
+  align-self: flex-start;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  background: none;
+  border: none;
+  border-radius: 50%;
+  font-size: 10px;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: color 0.12s ease, background 0.12s ease, transform 0.1s cubic-bezier(.4,0,.2,1);
+}
+.pushed-note-close:hover { color: var(--ink); background: var(--bg-elevated); }
+.pushed-note-close:active { transform: scale(0.88); }
+
+/* Goals that just moved to today slide in, one after another, with a glow. */
+@keyframes goalPushedIn {
+  0% { opacity: 0; transform: translateY(-8px) scale(0.98); background: var(--primary-soft); border-color: var(--primary); }
+  30% { opacity: 1; transform: none; background: var(--primary-soft); border-color: var(--primary); }
+  100% { background: var(--bg); border-color: var(--line); }
+}
+.sidebar-goal-row.goal-pushed-in { animation: goalPushedIn 1.1s cubic-bezier(.2,.8,.2,1) backwards; }
+.sidebar-goal-row.goal-landed { animation-fill-mode: backwards; }
 
 .goal-remove {
   flex: none;
@@ -2571,10 +2627,74 @@ h1.month-title {
 .option-btn:active { transform: scale(0.95); }
 
 .toggle-row-label { flex: 1; align-self: center; font-size: 13px; color: var(--ink); }
-#showCategoriesOptions .option-btn,
-#showSignificanceOptions .option-btn { flex: none; min-width: 48px; }
+/* On/Off pairs sit together on the right, leaving the label room for one line. */
+.toggle-row-label ~ .option-btn { flex: none; min-width: 52px; }
 
 .drawer-footnote { font-size: 12px; color: var(--ink-soft); }
+
+/* Opens and closes by sliding its height, so nothing around it jumps. */
+.reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  visibility: hidden;
+  transition: grid-template-rows 0.3s cubic-bezier(.2,.8,.2,1), opacity 0.16s ease, visibility 0s linear 0.3s;
+}
+.reveal.open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  visibility: visible;
+  transition: grid-template-rows 0.3s cubic-bezier(.2,.8,.2,1), opacity 0.24s ease 0.06s, visibility 0s;
+}
+.reveal > .reveal-inner { min-height: 0; overflow: hidden; }
+
+/* A setting that belongs to the one above it, branching off it. Its gap
+   is a margin inside the clipped box (not padding), so closed it takes no room. */
+.setting-sub .option-row { position: relative; margin-top: 8px; }
+.setting-sub .toggle-row-label { padding-left: 24px; }
+.setting-sub .option-row::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: -8px;
+  width: 11px;
+  height: calc(50% + 7px);
+  border-left: 2px solid var(--line);
+  border-bottom: 2px solid var(--line);
+  border-bottom-left-radius: 8px;
+}
+.setting-sub .drawer-footnote { margin: 4px 0 0; padding-left: 24px; }
+
+/* What turning it on just moved, with a way to take it back. */
+.push-result-box {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 12px;
+  padding: 7px 7px 7px 9px;
+  border-radius: 10px;
+  background: var(--primary-soft);
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, transparent);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.push-result-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #FFFFFF;
+}
+.push-result-icon svg { width: 12px; height: 12px; }
+.push-result-text { flex: 1; min-width: 0; }
+.push-result-box.is-quiet { background: var(--bg); border-color: var(--line); color: var(--ink-soft); }
+.push-result-box.is-quiet .push-result-icon { background: var(--ink-soft); }
+.push-undo-btn { font-size: 12px; padding: 5px 12px; box-shadow: 0 1px 2px var(--shadow); }
+.push-undo-btn[hidden] { display: none; }
 
 /* ---- modal (day detail, legacy support) ---- */
 
@@ -2622,6 +2742,7 @@ h1.month-title {
 
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; }
+  .reveal, .reveal.open { transition-duration: 0.001ms !important; transition-delay: 0s !important; }
   button, a, .day-cell, .swatch-btn, .rainbow-swatch-btn, .goal-toggle, .subgoal-toggle,
   .sidebar-toggle-handle, .category-chip, .showcase-dot { transition-property: color, background, border-color, opacity, box-shadow !important; }
 }

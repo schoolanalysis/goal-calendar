@@ -63,7 +63,9 @@
     dayPreviewEnabled: true,
     subcategoriesEnabled: true,
     repeatingEnabled: true,
-    timesEnabled: true
+    timesEnabled: true,
+    pushToToday: false,     // unfinished goals from earlier days move to today
+    pushUntimedOnly: false  // ...but only the ones without a time
   };
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
@@ -144,7 +146,8 @@
     }, 300);
   }
 
-  const today = new Date();
+  // Moves forward if the app is still open when the date changes (see catchUpToNewDay).
+  let today = new Date();
   let viewYear = today.getFullYear();
   let viewMonth = today.getMonth();
   let selectedDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
@@ -798,6 +801,10 @@
   function buildGoalRowEl(g, fullList, opts) {
     const row = document.createElement('div');
     row.className = 'sidebar-goal-row goal-row-hoverable' + (justMovedId === g.id ? ' goal-landed' : '');
+    if (justPushed.has(g.id)) {
+      row.classList.add(justPushedGlowOnly ? 'goal-landed' : 'goal-pushed-in');
+      row.style.animationDelay = Math.min(justPushed.get(g.id), 8) * 70 + 'ms';
+    }
 
     const toggle = document.createElement('button');
     toggle.className = 'goal-toggle' + (g.done ? ' checked' : '') + (justCompletedId === g.id ? ' pop' : '');
@@ -820,6 +827,10 @@
     text.setAttribute('role', 'button');
     text.tabIndex = 0;
     text.title = 'Edit goal';
+    if (g.movedFrom) {
+      text.dataset.movedFrom = shortDateWithDay(dateFromKey(g.movedFrom));
+      text.title += '\nMoved from ' + text.dataset.movedFrom;
+    }
     text.addEventListener('click', () => openEditGoal(g, fullList, false));
     text.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEditGoal(g, fullList, false); }
@@ -1016,6 +1027,10 @@
   let drag = null;              // the drag in progress, if any
   let suppressClickUntil = 0;   // swallows the click that ends a drag (it'd open the editor)
   let justMovedId = null;       // goal to flash once where it landed
+  // Goals that just moved to today, to glide in on the next render:
+  // goal id -> its place in the batch, so they arrive one after another.
+  let justPushed = new Map();
+  let justPushedGlowOnly = false; // just the glow, for goals already in view
 
   document.getElementById('orderResetBtn').addEventListener('click', () => {
     delete customOrder[keyForDate(selectedDay)];
@@ -1043,7 +1058,9 @@
     // Keyboard: Alt+↑ / Alt+↓ on the goal's name moves it.
     const name = row.querySelector('.sidebar-goal-text');
     if (!name) return;
-    name.title = 'Click to edit · drag to move' + (name.dataset.repeatInfo ? '\nRepeats: ' + name.dataset.repeatInfo : '');
+    name.title = 'Click to edit · drag to move' +
+      (name.dataset.repeatInfo ? '\nRepeats: ' + name.dataset.repeatInfo : '') +
+      (name.dataset.movedFrom ? '\nMoved from ' + name.dataset.movedFrom : '');
     name.setAttribute('aria-keyshortcuts', 'Alt+ArrowUp Alt+ArrowDown');
     name.addEventListener('keydown', (e) => {
       if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
@@ -2808,6 +2825,158 @@
     renderCalendar();
   });
 
+  // ---------- unfinished goals: pushing them to today ----------
+  // With "Push to today" on, a goal left unchecked on an earlier day moves to
+  // the top of today (oldest first) instead of staying behind. Recurring
+  // goals stay put, since every day already has its own copy, and so do
+  // timed goals when only untimed ones should move. A moved goal remembers
+  // the day it first came from (movedFrom), shown in its name's tooltip.
+  // Returns what moved, as { goal, from, index, stamped }: index is its old
+  // position in that day, stamped whether this move set movedFrom.
+  function pushUnfinishedToToday() {
+    if (!settings.pushToToday) return [];
+    const todayKey = keyForDate(today);
+    const moves = [];
+    Object.keys(data).filter(k => isDateKey(k) && k < todayKey && Array.isArray(data[k])).sort().forEach(k => {
+      const list = data[k];
+      const stay = [];
+      list.forEach((g, index) => {
+        if (g.done || g.seriesId || (settings.pushUntimedOnly && g.time)) stay.push(g);
+        else moves.push({ goal: g, from: k, index, stamped: !g.movedFrom });
+      });
+      if (stay.length < list.length) list.splice(0, list.length, ...stay);
+    });
+    if (!moves.length) return moves;
+    moves.forEach(m => { if (m.stamped) m.goal.movedFrom = m.from; });
+    if (!Array.isArray(data[todayKey])) data[todayKey] = [];
+    data[todayKey].unshift(...moves.map(m => m.goal));
+    scheduleSave();
+    return moves;
+  }
+
+  // Puts one push's goals back where they were. Several pushes are undone
+  // newest first, so each day's positions are the ones it had at the time.
+  function undoPush(moves) {
+    const moved = new Set(moves.map(m => m.goal));
+    Object.keys(data).forEach(k => {
+      const list = data[k];
+      if (!isDateKey(k) || !Array.isArray(list) || !list.some(g => moved.has(g))) return;
+      list.splice(0, list.length, ...list.filter(g => !moved.has(g)));
+    });
+    moves.slice().sort((a, b) => a.index - b.index).forEach(m => {
+      if (!Array.isArray(data[m.from])) data[m.from] = [];
+      data[m.from].splice(Math.min(m.index, data[m.from].length), 0, m.goal);
+      if (m.stamped) delete m.goal.movedFrom;
+    });
+    scheduleSave();
+  }
+
+  // Renders with the given goals gliding in, one after another (or, with
+  // glowOnly, glowing where they already are).
+  function glidePushedIn(moves, render, glowOnly) {
+    justPushed = new Map(moves.map((m, i) => [m.goal.id, i]));
+    justPushedGlowOnly = !!glowOnly;
+    render();
+    justPushed = new Map();
+    justPushedGlowOnly = false;
+  }
+
+  // A note at the top of the day's goals says what just moved to today and
+  // from when, so the goals don't appear there unexplained.
+  const pushedNote = document.getElementById('pushedNote');
+  function showPushedNote(moves) {
+    if (!moves.length) { pushedNote.classList.remove('open'); return; }
+    const days = [...new Set(moves.map(m => m.from))];
+    const from = days.length > 1 ? 'earlier days'
+      : days[0] === keyForDate(addDays(today, -1)) ? 'yesterday'
+      : shortDateWithDay(dateFromKey(days[0]));
+    document.getElementById('pushedNoteTitle').textContent =
+      moves.length + ' goal' + (moves.length === 1 ? '' : 's') + ' moved to today';
+    document.getElementById('pushedNoteSub').textContent = 'Unfinished from ' + from;
+    pushedNote.classList.add('open');
+  }
+  function hidePushedNote() { pushedNote.classList.remove('open'); }
+  document.getElementById('pushedNoteClose').addEventListener('click', hidePushedNote);
+
+  // Turning pushing on (or letting timed goals move too) moves what's waiting
+  // right away, and Settings says how many, with an Undo while it's open.
+  // Each push keeps the setting change that caused it, so Undo can take
+  // that back too; otherwise the goals would just move again. Once Settings
+  // closes, the goals that moved glow once more and the sidebar note says so.
+  const pushResult = document.getElementById('pushResult');
+  const pushResultBox = document.getElementById('pushResultBox');
+  const pushResultIcon = document.getElementById('pushResultIcon');
+  const pushResultText = document.getElementById('pushResultText');
+  const pushUndoBtn = document.getElementById('pushUndoBtn');
+  const PUSH_RESULT_ICONS = {
+    moved: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+    back: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>',
+    none: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>'
+  };
+  let pushUndo = []; // [{ moves, revert }], oldest first, since Settings opened
+  let pushResultTimer = null;
+  function pushedSinceOpen() { return pushUndo.reduce((all, p) => all.concat(p.moves), []); }
+  // kind: 'moved' (with Undo), 'back' or 'none' (these fade away on their own).
+  function setPushResult(kind, text) {
+    clearTimeout(pushResultTimer);
+    const wasOpen = pushResult.classList.contains('open');
+    pushResultBox.classList.toggle('is-quiet', kind !== 'moved');
+    pushResultIcon.innerHTML = PUSH_RESULT_ICONS[kind];
+    pushResultText.textContent = text;
+    pushUndoBtn.hidden = kind !== 'moved';
+    pushResult.classList.add('open');
+    if (wasOpen && pushResultBox.animate) {
+      pushResultBox.animate([{ opacity: 0.35, transform: 'scale(0.98)' }, { opacity: 1, transform: 'none' }], { duration: 220, easing: 'ease-out' });
+    }
+    if (kind !== 'moved') pushResultTimer = setTimeout(() => pushResult.classList.remove('open'), 3200);
+  }
+  function clearPushResult() {
+    clearTimeout(pushResultTimer);
+    pushUndo = [];
+    pushResult.classList.remove('open');
+  }
+  function pushFromSettings(revert) {
+    const moves = pushUnfinishedToToday();
+    if (moves.length) {
+      pushUndo.push({ moves, revert });
+      glidePushedIn(moves, refreshAfterGoalChange);
+    }
+    const n = pushedSinceOpen().length;
+    if (n) setPushResult('moved', 'Moved ' + n + ' goal' + (n === 1 ? '' : 's') + ' to today');
+    else setPushResult('none', 'All caught up. Nothing to move.');
+  }
+  pushUndoBtn.addEventListener('click', () => {
+    if (!pushUndo.length) return;
+    pushUndo.slice().reverse().forEach(p => { undoPush(p.moves); p.revert(); });
+    pushUndo = [];
+    saveSettings();
+    renderSettingUI();
+    refreshAfterGoalChange();
+    if (!settings.pushToToday) hidePushedNote();
+    setPushResult('back', 'Moved them back to their days');
+  });
+
+  // ---------- a new day while the app is open ----------
+  // "Today" is set when the page loads, so an app left open overnight
+  // catches up here: the Today label and calendar move on, the sidebar
+  // follows if it was showing today, and unfinished goals get pushed.
+  function catchUpToNewDay() {
+    const now = new Date();
+    if (sameDay(now, today) || drag) return;
+    const was = today;
+    today = now;
+    if (sameDay(selectedDay, was)) {
+      selectedDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      if (viewYear === was.getFullYear() && viewMonth === was.getMonth()) {
+        viewYear = now.getFullYear();
+        viewMonth = now.getMonth();
+      }
+    }
+    const moves = pushUnfinishedToToday();
+    showPushedNote(moves);
+    glidePushedIn(moves, refreshAfterGoalChange);
+  }
+
   // ---------- settings drawer ----------
   const drawer = document.getElementById('settingsDrawer');
   const drawerOverlay = document.getElementById('drawerOverlay');
@@ -2819,6 +2988,12 @@
   function closeDrawer() {
     drawer.classList.remove('open');
     drawerOverlay.classList.remove('open');
+    const moved = pushedSinceOpen();
+    clearPushResult();
+    if (moved.length) {
+      showPushedNote(moved);
+      glidePushedIn(moved, renderSidebarGoals, true);
+    }
   }
   document.getElementById('gearBtn').addEventListener('click', openDrawer);
   document.getElementById('closeDrawerBtn').addEventListener('click', closeDrawer);
@@ -2859,6 +3034,14 @@
     document.querySelectorAll('#timesEnabledOptions .option-btn').forEach(btn => {
       btn.classList.toggle('active', (btn.dataset.boolValue === 'true') === settings.timesEnabled);
     });
+    document.querySelectorAll('#pushToTodayOptions .option-btn').forEach(btn => {
+      btn.classList.toggle('active', (btn.dataset.boolValue === 'true') === settings.pushToToday);
+    });
+    document.querySelectorAll('#pushUntimedOnlyOptions .option-btn').forEach(btn => {
+      btn.classList.toggle('active', (btn.dataset.boolValue === 'true') === settings.pushUntimedOnly);
+    });
+    // Only untimed goals is part of Push to today, so it shows while that's on.
+    document.getElementById('pushUntimedOnlyRow').classList.toggle('open', settings.pushToToday);
   }
 
   function applyVisibilitySettings() {
@@ -3009,6 +3192,28 @@
       refreshAfterGoalChange();
     });
   });
+  document.querySelectorAll('#pushToTodayOptions .option-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const on = btn.dataset.boolValue === 'true';
+      if (on === settings.pushToToday) return;
+      settings.pushToToday = on;
+      saveSettings();
+      renderSettingUI();
+      if (on) pushFromSettings(() => { settings.pushToToday = false; });
+      else { clearPushResult(); hidePushedNote(); }
+    });
+  });
+  document.querySelectorAll('#pushUntimedOnlyOptions .option-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const on = btn.dataset.boolValue === 'true';
+      if (on === settings.pushUntimedOnly) return;
+      settings.pushUntimedOnly = on;
+      saveSettings();
+      renderSettingUI();
+      // Letting timed goals move too moves the ones still waiting right away.
+      if (!on) pushFromSettings(() => { settings.pushUntimedOnly = true; });
+    });
+  });
   document.querySelectorAll('#subcategoriesEnabledOptions .option-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       settings.subcategoriesEnabled = btn.dataset.boolValue === 'true';
@@ -3058,6 +3263,7 @@
 
   // ---------- startup ----------
   (async function start() {
+    let pushed = [];
     try {
       const meRes = await fetch('/api/me');
       const me = await meRes.json();
@@ -3076,6 +3282,7 @@
         : DEFAULT_CATEGORIES.map(c => Object.assign({}, c));
       series = Array.isArray(data.__series) ? data.__series : [];
       customOrder = data.__customOrder && typeof data.__customOrder === 'object' && !Array.isArray(data.__customOrder) ? data.__customOrder : {};
+      pushed = pushUnfinishedToToday();
     } catch (e) {
       console.error('Could not load goals', e);
     }
@@ -3092,6 +3299,10 @@
     renderCategoryDropdown();
     renderStarPicker();
     renderCalendar();
-    renderSidebarGoals();
+    glidePushedIn(pushed, renderSidebarGoals);
+    showPushedNote(pushed);
+
+    setInterval(catchUpToNewDay, 60 * 1000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) catchUpToNewDay(); });
   })();
 })();
