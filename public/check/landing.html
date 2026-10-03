@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Check! — the daily checklist that resets itself</title>
+<link rel="icon" type="image/svg+xml" href="/check/icon.svg">
+<link rel="stylesheet" href="/check/style.css">
+</head>
+<body>
+
+<header class="check-nav">
+  <div class="nav-inner">
+    <a class="check-brand-row" href="/check">
+      <img src="/check/icon.svg" alt="">
+      <span class="wordmark">Check!</span>
+    </a>
+    <div class="nav-actions" id="navActions">
+      <a class="btn btn-ghost btn-sm" href="/check/login.html">Log in</a>
+      <a class="btn btn-solid btn-sm" href="/check/register.html">Sign up free</a>
+    </div>
+  </div>
+</header>
+
+<section class="hero-check">
+  <div class="blob-field" aria-hidden="true">
+    <span class="blob" style="width:260px;height:260px;background:var(--pink);top:-60px;left:-100px;animation-delay:0s;"></span>
+    <span class="blob" style="width:200px;height:200px;background:var(--mint);top:60%;left:-60px;animation-delay:1.5s;"></span>
+    <span class="blob" style="width:220px;height:220px;background:var(--yellow);top:10%;right:-80px;animation-delay:0.8s;"></span>
+  </div>
+
+  <div class="hero-copy">
+    <span class="hero-eyebrow">✅ A checklist, and only a checklist</span>
+    <h1>Cross it off.<br>Every <span class="swoop">single</span> day.</h1>
+    <p class="tagline">
+      Check! is one list, unlimited things on it, and a clean slate every
+      morning. Add whatever's on your mind, tap it off as you go, and wake
+      up tomorrow to a checklist that's ready for round two — from your
+      phone, your laptop, wherever you log in.
+    </p>
+    <div class="hero-cta-row" id="heroCta">
+      <a class="btn btn-solid" href="/check/register.html">Start checking things off</a>
+      <a class="btn btn-ghost" href="/check/login.html">I have an account</a>
+    </div>
+  </div>
+
+  <div class="hero-demo">
+    <div class="demo-card">
+      <div class="demo-card-head">
+        <span class="demo-card-title">Today</span>
+        <span class="demo-streak" id="demoStreak">🔥 4-day streak</span>
+      </div>
+      <div class="demo-progress-track"><div class="demo-progress-fill" id="demoProgressFill"></div></div>
+      <div class="demo-list" id="demoList">
+        <div class="demo-row" data-i="0"><span class="demo-check"></span><span class="demo-text">Drink some water</span></div>
+        <div class="demo-row" data-i="1"><span class="demo-check"></span><span class="demo-text">Reply to Sam</span></div>
+        <div class="demo-row" data-i="2"><span class="demo-check"></span><span class="demo-text">Stretch for 5 minutes</span></div>
+        <div class="demo-row" data-i="3"><span class="demo-check"></span><span class="demo-text">Read one chapter</span></div>
+      </div>
+      <p class="demo-reset-note" id="demoNote">Resets fresh again tomorrow ✨</p>
+    </div>
+  </div>
+</section>
+
+<section class="features-check">
+  <div class="feature-card-fun">
+    <span class="feature-emoji">➕</span>
+    <h3>Add anything</h3>
+    <p>No categories, no priorities to fuss over. Type a thing, hit add, and it's on the list. Add one item or fifty.</p>
+  </div>
+  <div class="feature-card-fun">
+    <span class="feature-emoji">🌅</span>
+    <h3>Resets every morning</h3>
+    <p>Your list carries over, but every checkmark clears out overnight. Yesterday's wins don't clutter today's list.</p>
+  </div>
+  <div class="feature-card-fun">
+    <span class="feature-emoji">📱</span>
+    <h3>Log in from anywhere</h3>
+    <p>One account, any device. Check something off on your phone, see it updated the second you open your laptop.</p>
+  </div>
+  <div class="feature-card-fun">
+    <span class="feature-emoji">🔥</span>
+    <h3>Build a streak</h3>
+    <p>Clear your whole list before it resets and your streak climbs. Miss a day and it's back to one — no big deal, start again.</p>
+  </div>
+</section>
+
+<section class="cta-band-fun">
+  <h2>Your list is one tab away.</h2>
+  <p>Free forever. No app to install. Just you and today's list.</p>
+  <a class="btn btn-ghost" href="/check/register.html">Get started free</a>
+</section>
+
+<script>
+  // If already signed in, skip straight to the app instead of the sign-up flow.
+  fetch('/api/me').then(r => r.json()).then(data => {
+    if (!data.signedIn) return;
+    document.getElementById('navActions').innerHTML =
+      '<a class="btn btn-solid btn-sm" href="/check/app.html">Go to your checklist</a>';
+    document.getElementById('heroCta').innerHTML =
+      '<a class="btn btn-solid" href="/check/app.html">Go to your checklist</a>';
+  }).catch(() => {});
+
+  // A tiny looping demo: check items off one by one, fill the progress bar,
+  // pause on "complete", then reset — a live preview of what "resets every
+  // day" looks like without making anyone wait for tomorrow.
+  (function () {
+    const rows = Array.from(document.querySelectorAll('#demoList .demo-row'));
+    const fill = document.getElementById('demoProgressFill');
+    const note = document.getElementById('demoNote');
+    let i = 0;
+    let cycle = 0;
+
+    function step() {
+      if (i < rows.length) {
+        rows[i].classList.add('done');
+        i++;
+        fill.style.width = Math.round((i / rows.length) * 100) + '%';
+        setTimeout(step, 650);
+      } else {
+        note.textContent = 'All done — nice! 🎉';
+        setTimeout(resetDemo, 1800);
+      }
+    }
+
+    function resetDemo() {
+      cycle++;
+      rows.forEach(r => r.classList.remove('done'));
+      fill.style.width = '0%';
+      note.textContent = 'Resets fresh again tomorrow ✨';
+      i = 0;
+      setTimeout(step, 900);
+    }
+
+    setTimeout(step, 1200);
+  })();
+</script>
+</body>
+</html>

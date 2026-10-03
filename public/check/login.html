@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Log in — Check!</title>
+<link rel="icon" type="image/svg+xml" href="/check/icon.svg">
+<link rel="stylesheet" href="/check/style.css">
+</head>
+<body>
+<div class="fun-auth-page">
+  <div class="blob-field" aria-hidden="true">
+    <span class="blob" style="width:200px;height:200px;background:var(--pink);top:-40px;left:-60px;"></span>
+    <span class="blob" style="width:180px;height:180px;background:var(--mint);bottom:-40px;right:-40px;animation-delay:1s;"></span>
+  </div>
+
+  <div class="fun-auth-card">
+    <a class="check-brand-row" href="/check">
+      <img src="/check/icon.svg" alt="">
+      <span class="wordmark">Check!</span>
+    </a>
+    <h1>Welcome back</h1>
+    <p class="sub">Your list is right where you left it.</p>
+    <form id="loginForm">
+      <label for="email">Email</label>
+      <input type="email" id="email" name="email" autocomplete="email" required>
+
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" autocomplete="current-password" required>
+
+      <button class="btn btn-solid" type="submit" id="submitBtn">Log in</button>
+      <div class="fun-error-msg" id="errorMsg"></div>
+    </form>
+    <p class="fun-auth-alt">New here? <a href="/check/register.html">Create an account</a></p>
+  </div>
+</div>
+
+<script>
+  const form = document.getElementById('loginForm');
+  const errorMsg = document.getElementById('errorMsg');
+  const submitBtn = document.getElementById('submitBtn');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorMsg.classList.remove('visible');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Logging in…';
+
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: document.getElementById('email').value,
+          password: document.getElementById('password').value
+        })
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || 'Something went wrong.');
+      window.location.href = '/check/app.html';
+    } catch (err) {
+      errorMsg.textContent = err.message;
+      errorMsg.classList.add('visible');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Log in';
+    }
+  });
+</script>
+</body>
+</html>
