@@ -2715,6 +2715,33 @@ h1.month-title {
 .footnote { text-align: center; color: var(--ink-soft); font-size: 12px; margin-top: 28px; }
 
 .loading-state { text-align: center; padding: 60px 0; color: var(--ink-soft); font-size: 14px; }
+.loading-state.is-error { color: var(--ink); line-height: 1.5; }
+.loading-retry-btn { margin-top: 14px; padding: 8px 18px; }
+
+/* Speaks up only when something needs saying about saving: a save that's
+   being retried, one that can't be saved, or goals brought in from
+   another device. */
+.save-status {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  z-index: 260;
+  max-width: calc(100vw - 32px);
+  padding: 9px 16px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 24px var(--shadow);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, 12px);
+  transition: opacity 0.2s ease, transform 0.25s cubic-bezier(.2,.8,.2,1);
+}
+.save-status.show { opacity: 1; transform: translate(-50%, 0); }
+.save-status.is-retry, .save-status.is-error { border-color: var(--danger); color: var(--danger); }
 
 @media (max-width: 900px) {
   .app-shell { flex-direction: column; }

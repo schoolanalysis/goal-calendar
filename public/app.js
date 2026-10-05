@@ -126,24 +126,182 @@
     return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
   }
 
+  // ---------- saving & staying in sync ----------
+  // The server holds one copy of all your goals plus a version number that
+  // goes up with every save. This page remembers the version it last loaded
+  // or saved ("base"), and each save says which one it was built on. If the
+  // goals were saved from somewhere else in the meantime (another tab, a
+  // phone), the server refuses rather than let this page overwrite goals it
+  // never saw, and hands back what it has now; this page then folds its own
+  // changes into that (merge.js) and saves again, so nobody's changes are
+  // lost. A save that fails is kept and retried, with a note on screen, and
+  // nothing is ever saved until the goals have actually loaded.
+  let loaded = false;
+  let version = 0;     // the server's version as of `base`
+  let base = null;     // the goals as of `version`, as JSON
+  let saving = null;   // the save in flight, if any (a promise)
+  let retryDelay = 0;
+  let conflictsInARow = 0;
+  let leaving = false; // on the way to the login page: nothing to warn about
+
+  function snapshot() {
+    data.__categories = categories;
+    data.__series = series;
+    data.__customOrder = customOrder;
+    return JSON.stringify(data);
+  }
+  function hasUnsaved() { return loaded && (!!saving || snapshot() !== base); }
+
   function scheduleSave() {
+    if (!loaded) return;
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(async () => {
+    saveTimer = setTimeout(saveNow, 300);
+  }
+
+  function saveNow() {
+    clearTimeout(saveTimer);
+    if (!loaded) return Promise.resolve();
+    if (saving) return saving;
+    const body = snapshot();
+    if (body === base) return Promise.resolve();
+    saving = (async () => {
+      let res = null;
       try {
-        data.__categories = categories;
-        data.__series = series;
-        data.__customOrder = customOrder;
-        const res = await fetch('/api/goals', {
+        res = await fetch('/api/goals', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ goals: data })
+          body: '{"baseVersion":' + version + ',"goals":' + body + '}',
+          // Lets a save started as the page closes still finish (small saves only).
+          keepalive: document.visibilityState === 'hidden' && body.length < 60000
         });
-        if (res.status === 401) window.location.href = '/login.html';
-        else if (!res.ok) console.error('Could not save goals: HTTP ' + res.status);
-      } catch (e) {
-        console.error('Could not save goals', e);
+      } catch (e) { /* offline: handled below */ }
+      let reply = null;
+      if (res) { try { reply = await res.json(); } catch (e) { reply = null; } }
+      saving = null;
+
+      if (res && res.status === 401) { leaving = true; window.location.href = '/login.html'; return; }
+      if (res && res.ok && reply && Number.isInteger(reply.version)) {
+        version = reply.version;
+        base = body;
+        conflictsInARow = 0;
+        if (retryDelay) { retryDelay = 0; setSaveStatus('saved'); }
+        if (snapshot() !== base) scheduleSave(); // changed again while it was saving
+        return;
       }
-    }, 300);
+      if (res && res.status === 409 && reply && reply.goals && Number.isInteger(reply.version)) {
+        // Saved from somewhere else meanwhile: fold this page's changes into
+        // that, then save the combination.
+        conflictsInARow++;
+        await whenNotDragging();
+        applyServerGoals(reply.goals, reply.version);
+        if (conflictsInARow < 5) saveNow(); else saveTimer = setTimeout(saveNow, 3000);
+        return;
+      }
+      if (res && (res.status === 400 || res.status === 413)) {
+        // Retrying won't help these; keep the changes on screen and say so.
+        setSaveStatus('error', (reply && reply.error) || 'Your latest changes couldn\'t be saved.');
+        return;
+      }
+      // Offline, or the server is down or restarting: keep trying.
+      retryDelay = Math.min(retryDelay ? retryDelay * 2 : 2000, 30000);
+      setSaveStatus('retry');
+      saveTimer = setTimeout(saveNow, retryDelay);
+    })();
+    return saving;
+  }
+
+  function setData(goals) {
+    data = goals;
+    // A brand-new account has no stored category list yet — seed it with
+    // the defaults. Once saved, whatever's stored (additions, deletions,
+    // built-ins included) is the source of truth from then on.
+    categories = Array.isArray(data.__categories)
+      ? data.__categories
+      : DEFAULT_CATEGORIES.map(c => Object.assign({}, c));
+    series = Array.isArray(data.__series) ? data.__series : [];
+    customOrder = data.__customOrder && typeof data.__customOrder === 'object' && !Array.isArray(data.__customOrder) ? data.__customOrder : {};
+  }
+
+  // Takes in goals saved from somewhere else. Any changes made here that
+  // aren't saved yet are folded in on top, to be saved next.
+  function applyServerGoals(theirs, theirsVersion) {
+    const mine = snapshot();
+    const hadChanges = mine !== base;
+    const baseGoals = hadChanges ? JSON.parse(base) : null;
+    setData(theirs);
+    base = snapshot(); // the server's copy, in the same form this page saves
+    version = theirsVersion;
+    if (hadChanges) setData(window.GoalkeeprMerge.mergeData(baseGoals, JSON.parse(mine), JSON.parse(base)));
+    afterGoalsReplaced();
+  }
+
+  // Everything that held on to the old goal objects looks them up again.
+  function afterGoalsReplaced() {
+    if (editing) {
+      const found = findGoalById(editing.goal.id);
+      if (found) { editing.goal = found.goal; editing.dateKey = found.dateKey; }
+      else closeEditGoal();
+    }
+    clearPushResult();
+    if (categoryFilter && !categories.some(c => c.id === categoryFilter)) categoryFilter = null;
+    renderCategoryList();
+    renderCategoryDropdown();
+    refreshAfterGoalChange();
+    renderRepeatingModal();
+  }
+
+  function findGoalById(id) {
+    for (const k of Object.keys(data)) {
+      if (!isDateKey(k) || !Array.isArray(data[k])) continue;
+      const goal = data[k].find(g => g && g.id === id);
+      if (goal) return { goal, dateKey: k };
+    }
+    return null;
+  }
+
+  function whenNotDragging() {
+    return new Promise(resolve => {
+      (function wait() { if (drag) setTimeout(wait, 200); else resolve(); })();
+    });
+  }
+
+  // When this page comes back into view (or every minute while it's open),
+  // it checks whether the goals were saved from somewhere else, and if so
+  // brings them in, so an old tab never works from an old copy.
+  async function pullIfChanged() {
+    if (!loaded || saving || drag) return;
+    if (snapshot() !== base) { await saveNow(); return; } // the save itself will meet anything newer
+    try {
+      const vr = await fetch('/api/goals/version');
+      if (vr.status === 401) { leaving = true; window.location.href = '/login.html'; return; }
+      if (!vr.ok) return;
+      const v = (await vr.json()).version;
+      if (!Number.isInteger(v) || v === version) return;
+      const gr = await fetch('/api/goals');
+      if (!gr.ok) return;
+      const body = await gr.json();
+      if (!body || typeof body.goals !== 'object' || !body.goals || !Number.isInteger(body.version)) return;
+      if (saving || body.version === version) return;
+      await whenNotDragging();
+      applyServerGoals(body.goals, body.version);
+      setSaveStatus('pulled');
+      if (snapshot() !== base) scheduleSave();
+    } catch (e) { /* offline: try again next time */ }
+  }
+
+  const saveStatus = document.getElementById('saveStatus');
+  let saveStatusTimer = null;
+  function setSaveStatus(kind, message) {
+    clearTimeout(saveStatusTimer);
+    const text = {
+      retry: 'Not saved yet. Retrying…',
+      saved: 'All changes saved',
+      pulled: 'Updated with changes from another device',
+      error: message
+    }[kind];
+    saveStatus.className = 'save-status' + (kind ? ' show is-' + kind : '');
+    if (text) saveStatus.textContent = text;
+    if (kind === 'saved' || kind === 'pulled') saveStatusTimer = setTimeout(() => setSaveStatus(null), 3500);
   }
 
   // Moves forward if the app is still open when the date changes (see catchUpToNewDay).
@@ -2244,7 +2402,10 @@
   const editTimeWarning = document.getElementById('editTimeWarning');
   const editSaveBtn = document.getElementById('editSaveBtn');
   const editScopeField = document.getElementById('editScopeField');
-  let editing = null; // { goal, dateKey } while the editor is open
+  // While the editor is open: { goal, dateKey, seen }. seen is the goal as
+  // the editor showed it, so saving applies only what was changed in the
+  // editor, even if the goal was changed from another device meanwhile.
+  let editing = null;
   let editStars = 0;
 
   // The same category picker as the add-goal form's.
@@ -2295,7 +2456,7 @@
     if (!dateKey) return;
     closeRepeatPop(false);
     closeTimePop(false);
-    editing = { goal: g, dateKey };
+    editing = { goal: g, dateKey, seen: JSON.parse(JSON.stringify(g)) };
 
     const s = g.seriesId && series.find(x => x.id === g.seriesId);
     const recurring = !!s && settings.repeatingEnabled;
@@ -2352,28 +2513,28 @@
   editForm.addEventListener('submit', (e) => {
     e.preventDefault();
     if (!editing || editSaveBtn.disabled) return;
-    const { goal, dateKey } = editing;
+    const { goal, dateKey, seen } = editing;
     const changes = {};
 
     const text = editText.value.trim();
-    if (text !== goal.text) changes.text = text;
+    if (text !== seen.text) changes.text = text;
 
     const choice = editChoice();
     // With subcategories switched off the picker can't show them, so an
     // unchanged category keeps whatever subcategory it already had.
-    const subcategory = !settings.subcategoriesEnabled && choice.category === goal.category
-      ? (goal.subcategory || null) : choice.subcategory;
-    if (choice.category !== goal.category || subcategory !== (goal.subcategory || null)) {
+    const subcategory = !settings.subcategoriesEnabled && choice.category === seen.category
+      ? (seen.subcategory || null) : choice.subcategory;
+    if (choice.category !== seen.category || subcategory !== (seen.subcategory || null)) {
       changes.category = choice.category;
       changes.subcategory = subcategory;
     }
 
-    if (editStars !== (goal.stars || 0)) changes.stars = editStars;
+    if (editStars !== (seen.stars || 0)) changes.stars = editStars;
 
     if (settings.timesEnabled) {
       const start = editTimeStart.value || null;
       const end = start && editTimeEnd.value ? editTimeEnd.value : null;
-      if (start !== (goal.time || null) || end !== (goal.endTime || null)) {
+      if (start !== (seen.time || null) || end !== (seen.endTime || null)) {
         changes.time = start;
         changes.endTime = end;
       }
@@ -3256,36 +3417,70 @@
     renderCalendar();
   });
 
+  // ---------- startup ----------
+  // Shown instead of an empty calendar if the goals can't be loaded, which
+  // would look like they were all gone (and, if saved, make it so).
+  function waitToRetryLoading() {
+    const el = document.getElementById('loadingState');
+    el.classList.add('is-error');
+    el.innerHTML = '';
+    const msg = document.createElement('div');
+    msg.textContent = 'Couldn\'t load your goals. They\'re safe; check your connection and try again.';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'mini-btn-primary loading-retry-btn';
+    btn.textContent = 'Try again';
+    el.append(msg, btn);
+    return new Promise(resolve => {
+      const again = () => {
+        clearTimeout(timer);
+        el.classList.remove('is-error');
+        el.textContent = 'Loading your goals…';
+        resolve();
+      };
+      const timer = setTimeout(again, 15000);
+      btn.addEventListener('click', again, { once: true });
+    });
+  }
+
   document.getElementById('logoutBtn').addEventListener('click', async () => {
+    if (hasUnsaved()) await saveNow();
+    leaving = true;
     await fetch('/api/logout', { method: 'POST' });
     window.location.href = '/login.html';
   });
 
   // ---------- startup ----------
   (async function start() {
-    let pushed = [];
-    try {
-      const meRes = await fetch('/api/me');
-      const me = await meRes.json();
-      if (!me.signedIn) { window.location.href = '/login.html'; return; }
-      document.getElementById('accountLabel').textContent = 'Signed in as ' + (me.name || me.email);
+    const sidebar = document.getElementById('sidebar');
+    sidebar.inert = true; // nothing can be changed before the goals are in
+    let body = null;
+    while (!body) {
+      try {
+        const meRes = await fetch('/api/me');
+        const me = await meRes.json();
+        if (!me.signedIn) { leaving = true; window.location.href = '/login.html'; return; }
+        document.getElementById('accountLabel').textContent = 'Signed in as ' + (me.name || me.email);
 
-      const goalsRes = await fetch('/api/goals');
-      if (goalsRes.status === 401) { window.location.href = '/login.html'; return; }
-      const body = await goalsRes.json();
-      data = body.goals || {};
-      // A brand-new account has no stored category list yet — seed it with
-      // the defaults. Once saved, whatever's stored (additions, deletions,
-      // built-ins included) is the source of truth from then on.
-      categories = Array.isArray(data.__categories)
-        ? data.__categories
-        : DEFAULT_CATEGORIES.map(c => Object.assign({}, c));
-      series = Array.isArray(data.__series) ? data.__series : [];
-      customOrder = data.__customOrder && typeof data.__customOrder === 'object' && !Array.isArray(data.__customOrder) ? data.__customOrder : {};
-      pushed = pushUnfinishedToToday();
-    } catch (e) {
-      console.error('Could not load goals', e);
+        const goalsRes = await fetch('/api/goals');
+        if (goalsRes.status === 401) { leaving = true; window.location.href = '/login.html'; return; }
+        if (!goalsRes.ok) throw new Error('HTTP ' + goalsRes.status);
+        const reply = await goalsRes.json();
+        if (!reply || typeof reply.goals !== 'object' || !reply.goals || Array.isArray(reply.goals) || !Number.isInteger(reply.version)) {
+          throw new Error('Unexpected reply');
+        }
+        body = reply;
+      } catch (e) {
+        console.error('Could not load goals', e);
+        await waitToRetryLoading();
+      }
     }
+    setData(body.goals);
+    version = body.version;
+    base = snapshot();
+    loaded = true;
+    sidebar.inert = false;
+    const pushed = pushUnfinishedToToday();
 
     document.getElementById('loadingState').style.display = 'none';
     weekdaysRow.style.display = 'grid';
@@ -3302,7 +3497,20 @@
     glidePushedIn(pushed, renderSidebarGoals);
     showPushedNote(pushed);
 
-    setInterval(catchUpToNewDay, 60 * 1000);
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) catchUpToNewDay(); });
+    // Coming back to this page: bring in anything saved elsewhere first,
+    // then catch up if the date changed. Leaving it: save right away.
+    const syncUp = () => pullIfChanged().then(catchUpToNewDay);
+    setInterval(() => { if (!document.hidden) syncUp(); }, 60 * 1000);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) saveNow(); else syncUp();
+    });
+    window.addEventListener('focus', () => pullIfChanged());
+    window.addEventListener('pagehide', () => { saveNow(); });
+    window.addEventListener('beforeunload', (e) => {
+      if (leaving || !hasUnsaved()) return;
+      saveNow();
+      e.preventDefault();
+      e.returnValue = '';
+    });
   })();
 })();

@@ -53,8 +53,28 @@ async function initDb() {
       data TEXT NOT NULL DEFAULT '{}',
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    -- Earlier copies of each user's goals, so a bad save can be undone.
+    CREATE TABLE IF NOT EXISTS goals_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      data TEXT NOT NULL,
+      version INTEGER NOT NULL,
+      saved_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS goals_history_user ON goals_history (user_id, id);
   `);
+  // Every save bumps version; a save must say which version it was based
+  // on, so one made from out-of-date goals can't overwrite newer ones.
+  const cols = await db.execute('PRAGMA table_info(goals)');
+  if (!cols.rows.some(c => c.name === 'version')) {
+    await db.execute('ALTER TABLE goals ADD COLUMN version INTEGER NOT NULL DEFAULT 0');
+  }
 }
+
+// How many earlier copies of each user's goals to keep (at most one an
+// hour, plus one before any save that would remove a lot at once).
+const HISTORY_KEEP = 72;
 
 const queries = {
   findUserByEmail: (email) =>
@@ -69,15 +89,40 @@ const queries = {
       args: [email, passwordHash, name]
     }).then(r => Number(r.lastInsertRowid)),
   getGoals: (userId) =>
-    db.execute({ sql: 'SELECT data FROM goals WHERE user_id = ?', args: [userId] })
+    db.execute({ sql: 'SELECT data, version FROM goals WHERE user_id = ?', args: [userId] })
       .then(r => r.rows[0]),
-  upsertGoals: (userId, data) =>
+  getGoalsVersion: (userId) =>
+    db.execute({ sql: 'SELECT version FROM goals WHERE user_id = ?', args: [userId] })
+      .then(r => (r.rows[0] ? Number(r.rows[0].version) : 0)),
+  // Writes only if the stored version is still `version`, so two saves
+  // racing each other can't both win. Resolves to whether it wrote.
+  insertGoals: (userId, data) =>
     db.execute({
-      sql: `INSERT INTO goals (user_id, data, updated_at)
-            VALUES (?, ?, datetime('now'))
-            ON CONFLICT(user_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`,
+      sql: `INSERT INTO goals (user_id, data, version, updated_at)
+            VALUES (?, ?, 1, datetime('now'))
+            ON CONFLICT(user_id) DO NOTHING`,
       args: [userId, data]
-    })
+    }).then(r => r.rowsAffected === 1),
+  updateGoals: (userId, data, version) =>
+    db.execute({
+      sql: `UPDATE goals SET data = ?, version = version + 1, updated_at = datetime('now')
+            WHERE user_id = ? AND version = ?`,
+      args: [data, userId, version]
+    }).then(r => r.rowsAffected === 1),
+  hasRecentSnapshot: (userId) =>
+    db.execute({
+      sql: `SELECT 1 FROM goals_history WHERE user_id = ? AND saved_at > datetime('now', '-1 hour') LIMIT 1`,
+      args: [userId]
+    }).then(r => r.rows.length > 0),
+  addSnapshot: (userId, data, version) =>
+    db.batch([
+      { sql: 'INSERT INTO goals_history (user_id, data, version) VALUES (?, ?, ?)', args: [userId, data, version] },
+      {
+        sql: `DELETE FROM goals_history WHERE user_id = ? AND id NOT IN
+                (SELECT id FROM goals_history WHERE user_id = ? ORDER BY id DESC LIMIT ?)`,
+        args: [userId, userId, HISTORY_KEEP]
+      }
+    ], 'write')
 };
 
 // ---------- app setup ----------
@@ -193,21 +238,31 @@ app.get('/api/me', async (req, res) => {
 
 // ---------- goals API ----------
 
+function parseGoals(text) {
+  try { return JSON.parse(text) || {}; } catch (e) { return {}; }
+}
+
+function countGoals(goals) {
+  return Object.keys(goals).reduce((n, k) =>
+    n + (/^\d{4}-\d{2}-\d{2}$/.test(k) && Array.isArray(goals[k]) ? goals[k].length : 0), 0);
+}
+
 app.get('/api/goals', requireAuth, async (req, res) => {
   const row = await queries.getGoals(req.session.userId);
-  let goals = {};
-  if (row) {
-    try {
-      goals = JSON.parse(row.data) || {};
-    } catch (e) {
-      goals = {};
-    }
-  }
-  res.json({ goals });
+  res.json({
+    goals: row ? parseGoals(row.data) : {},
+    version: row ? Number(row.version) : 0
+  });
+});
+
+// Cheap check an open page makes now and then, to notice changes saved
+// from another tab or device without downloading everything.
+app.get('/api/goals/version', requireAuth, async (req, res) => {
+  res.json({ version: await queries.getGoalsVersion(req.session.userId) });
 });
 
 app.put('/api/goals', requireAuth, async (req, res) => {
-  const { goals } = req.body || {};
+  const { goals, baseVersion } = req.body || {};
   if (typeof goals !== 'object' || goals === null || Array.isArray(goals)) {
     return res.status(400).json({ error: 'Malformed goals payload.' });
   }
@@ -215,8 +270,42 @@ app.put('/api/goals', requireAuth, async (req, res) => {
   if (serialized.length > 2_000_000) {
     return res.status(413).json({ error: 'That is too much data to save at once.' });
   }
-  await queries.upsertGoals(req.session.userId, serialized);
-  res.json({ ok: true });
+  const userId = req.session.userId;
+
+  // A save carries the version it was based on. If anything was saved
+  // since (another tab or device), it's refused and handed the current
+  // goals instead, so the page can fold its change in and try again,
+  // rather than replacing goals it never saw. A page from before versions
+  // existed sends none, and is refused the same way.
+  const conflict = async () => {
+    const row = await queries.getGoals(userId);
+    res.status(409).json({
+      error: 'Your goals changed somewhere else since this page loaded.',
+      goals: row ? parseGoals(row.data) : {},
+      version: row ? Number(row.version) : 0
+    });
+  };
+  if (!Number.isInteger(baseVersion) || baseVersion < 0) return conflict();
+
+  const row = await queries.getGoals(userId);
+  const current = row ? Number(row.version) : 0;
+  if (baseVersion !== current) return conflict();
+
+  if (row) {
+    // Keep a copy of what's about to be replaced: once an hour, and always
+    // before a save that would remove a lot at once.
+    const before = countGoals(parseGoals(row.data));
+    const dropsMany = before >= 10 && countGoals(goals) < before / 2;
+    if (dropsMany || !(await queries.hasRecentSnapshot(userId))) {
+      await queries.addSnapshot(userId, row.data, current);
+    }
+  }
+
+  const wrote = row
+    ? await queries.updateGoals(userId, serialized, current)
+    : await queries.insertGoals(userId, serialized);
+  if (!wrote) return conflict();
+  res.json({ ok: true, version: current + 1 });
 });
 
 // ---------- pages ----------
